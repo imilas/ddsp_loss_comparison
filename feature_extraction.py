@@ -40,7 +40,7 @@ def __(helper, url0):
 
 @app.cell
 def __(librosa, np, plt, y):
-    S = np.abs(librosa.stft(y, hop_length=16))
+    S = np.abs(librosa.stft(y, hop_length=256, n_fft=2048))
     fig, ax = plt.subplots()
     img = librosa.display.specshow(
         librosa.amplitude_to_db(S, ref=np.max), y_axis="log", x_axis="time", ax=ax
@@ -49,6 +49,12 @@ def __(librosa, np, plt, y):
     fig.colorbar(img, ax=ax, format="%+2.0f dB")
     ax
     return S, ax, fig, img
+
+
+@app.cell
+def __(S):
+    S.shape
+    return
 
 
 if __name__ == "__main__":
