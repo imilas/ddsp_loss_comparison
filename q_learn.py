@@ -31,6 +31,20 @@ def __(itertools, np, plt, signal):
 
 
 @app.cell
+def __(mo, np):
+    def ideal_return(signal,gamma,steps):
+        gs = np.array([gamma**i for i in range(steps)]) 
+        return np.sum([x*y for x,y in zip(gs,signal)])
+    mo.md(
+        r'''
+        $v_{t} =\sum_{k=0}^{\infty}\gamma^{k}R_{t+k+1}=G_t$
+        '''
+    )
+
+    return ideal_return,
+
+
+@app.cell
 def __(np):
     class agent:
         def __init__(self, nback, learning_rate,discount_factor):
@@ -38,8 +52,8 @@ def __(np):
             self.lr = learning_rate
             self.gamma = discount_factor
             self.nback = nback
-            self.w = np.random.rand(nback)*0.001
-            self.s = np.zeros(nback)
+            self.w = np.random.rand(self.nback)*0.001
+            self.s = np.zeros(self.nback)
             self.error = []
         def update(self,reward):  
             s_prime = np.roll(self.s,1)
@@ -48,39 +62,64 @@ def __(np):
             td_error = (reward
                        + self.gamma*np.dot(self.w,s_prime) 
                        - np.dot(self.w,self.s))
-            self.w = self.w + self.lr * td_error
+            self.w = self.w + self.lr * td_error*self.s
             self.error.append(td_error)
             self.s = s_prime
+        def multi_update(self,signal_slice,log=False):
+            """multiple update steps given a slice of signal"""
+            for v in signal_slice:
+                self.update(v)
+                if log:
+                    self.log_values()
+        def reset(self):
+            self.w = np.random.rand(self.nback)*0.001
+            self.s = np.zeros(self.nback)
+            self.error = []
         def log_values(self):
             print("state:",self.s)
             print("w:",self.w)
+            print("error",self.error[-1])
 
 
-    agent = agent(10,0.1,0.1)
-
-    test_signal = []
-    return agent, test_signal
+    return agent,
 
 
 @app.cell
 def __(agent, np):
-    # some tests
-    agent.__init__
-    agent.w = np.zeros(10)
-
-    return
+    # A test of update value
+    agent_1 = agent(3,0.1,0.1)
+    agent_1.w = np.zeros(3)
+    agent_1.multi_update([1,1],log=False)
+    np.testing.assert_array_equal(agent_1.w, np.array([0.1,0,0]),err_msg="wrong update")
+    return agent_1,
 
 
 @app.cell
-def __(agent, plt, signal_gen, test_signal):
+def __(agent, plt, signal_gen):
     # is there a way to prevent td errors that we know are coming?
-    for i in range(100):    
+
+    test_signal = []
+    agent_2 = agent(10,0.9,0.91)
+    for i in range(500):    
         r = next(signal_gen)
         test_signal.append(r)
-        agent.update(r)
-    plt.plot(agent.error,label="td error")
+        agent_2.update(r)
+        
+    plt.plot(agent_2.error,label="td error")
     plt.plot(test_signal,label="signal")
-    return i, r
+    plt.legend(loc = "best")
+    return agent_2, i, r, test_signal
+
+
+@app.cell
+def __(ideal_return, itertools, np, plt, signal_gen):
+    signal_clone = itertools.tee(signal_gen,1)[0] # clone the signal_generator
+    future_values = [next(signal_clone) for i in range(1000)]
+    windows = np.lib.stride_tricks.sliding_window_view(future_values,3)
+
+    plt.plot(future_values,label="signal")
+    plt.plot([ideal_return(w,1,100) for w in windows],label="ideal return")
+    return future_values, signal_clone, windows
 
 
 if __name__ == "__main__":
