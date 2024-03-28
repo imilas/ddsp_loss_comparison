@@ -58,7 +58,30 @@ def __(mo, np):
 
 
 @app.cell
+def __(mo):
+    mo.md(
+        '''
+        The agent will make linear predictions about the future by looking n steps back (variable nback). The agent is also given a discount factor $\gamma$, learning rate $\\alpha$ and trace decay $\lambda$.
+
+        We use a td($\lambda$) update rule for the weight vectors $\\theta_t$ given eligibility trace vectors $z_t$ and feature vector $\phi_t$ which is simply a slice of the signal looking back $n$ steps i.e., $s[t-n:t]$ where $s$ is the signal array. 
+
+       Naturally, $z_t$ and $\\theta_t$ would be vectors of size n, and randomly initialized to 0.
+
+        As the signal unfolds, the agent updates are as follows:
+        
+        $z_t = \gamma \lambda z_{t-1} + \phi_t$
+        
+        $\delta_t=R_{t+i} + \gamma\phi_{t+1}\\theta_{t}-\phi\\theta_t$
+        
+        $\\theta_{t+1} = \\theta_t + \\alpha \gamma \\delta z_t$
+
+    ''')
+    return
+
+
+@app.cell
 def __(np):
+
     class agent:
         def __init__(self, nback, learning_rate,discount_factor,trace_decay=0.1,eps_decay=1,eps_min=1e-4):
             """ nback: size of past values/state size""" 
@@ -114,7 +137,7 @@ def __(agent, mo, np, pd, px, signal_gen):
     # is there a way to prevent td errors that we know are coming?
     test_signal = []
     agent_2 = agent(29,0.01,0.4,trace_decay=0.0,eps_decay=0.999,eps_min=0.001)
-    for i in range(100000):    
+    for i in range(10000):    
         r = next(signal_gen)
         test_signal.append(r)
         agent_2.update(r)
@@ -160,6 +183,19 @@ def __(agent_2, ideal_return, mo, np, pd, px, signal_clone):
     df_3 = pd.DataFrame({"predictions":predictions,"ideal returns":ideal_r,"signal":s_copy[0:len(ideal_r)]})
     mo.ui.plotly(px.line(df_3,title="ideal returns vs signal"))
     return df_3, future, i2, ideal_r, offset, past, predictions, s_copy
+
+
+@app.cell
+def __(mo):
+    mo.md('''
+    We see that by treating the values of a reoccuring signal as reward, we can learn its value function near perfectly by using very few parameters. 
+    Issue with the implementation here:
+
+    1. It learns slow
+    2. What if one reoccuring signal turns into another reoccuring signal?
+    3. What if the signal was multi-dimensional? 
+    ''')
+    return
 
 
 if __name__ == "__main__":
