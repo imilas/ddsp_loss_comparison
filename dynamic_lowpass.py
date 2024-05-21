@@ -151,7 +151,7 @@ def __():
     #         cutoff = jnp.expand_dims(cutoff, axis=0)
 
     #         # Concatenate cutoff and input audio on the channel axis
-            
+
     #         x = jnp.concatenate([cutoff, x], axis=-2)
     #         print(cutoff.shape)
     #         filterModel = FilterModel(sample_rate=SAMPLE_RATE)
@@ -181,11 +181,6 @@ def __():
 
 
 @app.cell
-def __():
-    return
-
-
-@app.cell
 def __(FilterModel, SAMPLE_RATE, jax, jnp, make_sine, nn, np, partial):
     # We don't vmap FilterModel in-place because we need the original version inside AutomationModel
     HiddenModel = nn.vmap(FilterModel, in_axes=(0, None), variable_axes={'params': None}, split_rngs={'params': False})
@@ -209,11 +204,11 @@ def __(FilterModel, SAMPLE_RATE, jax, jnp, make_sine, nn, np, partial):
             automation = jnp.interp(automation,jnp.array([-1,1],jnp.array([20,20000]))) 
             self.sow('intermediates',"freq",freq)
             self.sow('intermediates',"cutoff",automation)
-            
+
             x = jnp.concatenate([automation,x],axis = -2)
             filterModel = FilterModel(sample_rate = SAMPLE_RATE)
             audio = filterModel(x,T)
-            
+
             return audio,automation
 
     # set control rate to 100th of audio rate
@@ -306,8 +301,6 @@ def __(
     train_sounds = train_model.apply(train_params,train_inputs,T)
     show_audio(hidden_sounds[0])
     show_audio(train_sounds[0])
-
-
     return hidden_sounds, train_sounds
 
 
