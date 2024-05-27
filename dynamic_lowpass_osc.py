@@ -124,74 +124,6 @@ def __(FaustContext, SAMPLE_RATE, fbox, jnp):
     )
 
 
-@app.cell(hide_code=True)
-def __():
-    # # We don't vmap FilterModel in-place because we need the original version inside AutomationModel
-    # HiddenModel = nn.vmap(FilterModel, in_axes=(0, None), variable_axes={'params': None}, split_rngs={'params': False})
-
-    # hidden_model = HiddenModel(SAMPLE_RATE)
-
-    # class AutomationModel(nn.Module):
-
-    #     automation_samples: int
-
-    #     def getNumInputs(self):
-    #         return 1
-
-    #     @nn.compact
-    #     def __call__(self, x, T: int) -> jnp.array:
-
-    #         # make the learnable cutoff automation parameter.
-    #         # It will start out as zero. We'll clamp it to [-1,1], and then remap to a useful range in Hz.
-    #         cutoff = self.param('cutoff', nn.initializers.normal(0.1), (self.automation_samples,))
-    #         # clamp the min to a safe range
-    #         cutoff = jnp.clip(cutoff, -1., 1.)
-
-    #         # Remap to a range in Hz that our DSP expects
-    #         cutoff_min = 20
-    #         cutoff_max = 20_000
-    #         cutoff = jnp.interp(cutoff, jnp.array([-1., 1.]), jnp.array([cutoff_min, cutoff_max]))
-
-    #         # Interpolate the cutoff to match the length of the input audio.
-    #         # This is still differentiable.
-    #         cutoff = jnp.interp(jnp.linspace(0,1,T), jnp.linspace(0,1,self.automation_samples), cutoff)
-
-    #         # Sow our up-sampled cutoff automation, which we will access later when plotting.
-    #         self.sow('intermediates', "cutoff", cutoff)
-
-    #         # Expand dim to include channel
-    #         cutoff = jnp.expand_dims(cutoff, axis=0)
-
-    #         # Concatenate cutoff and input audio on the channel axis
-
-    #         x = jnp.concatenate([cutoff, x], axis=-2)
-    #         print(cutoff.shape)
-    #         filterModel = FilterModel(sample_rate=SAMPLE_RATE)
-
-    #         audio = filterModel(x, T)
-
-    #         return audio
-
-    # # set control rate to 100th of audio rate
-    # AUTOMATION_DOWNSAMPLE = 100 #@param {type:"integer"}
-    # RECORD_DURATION = 1.0 #@param {type:"number"}
-    # T = int(RECORD_DURATION*SAMPLE_RATE)
-    # automation_samples = T//AUTOMATION_DOWNSAMPLE
-
-    # jit_inference_fn = jax.jit(partial(AutomationModel(automation_samples=automation_samples).apply, mutable='intermediates'), static_argnums=[2])
-    # AutomationModel = nn.vmap(AutomationModel, in_axes=(0, None), variable_axes={'params': None}, split_rngs={'params': False})
-
-    # train_model = AutomationModel(automation_samples=automation_samples)
-
-    # batch_size = 3 #@param {type: 'integer'}
-    # hidden_automation_freq = 10.0 #@param {type:"number"}
-    # hidden_automation = 10_000+make_sine(hidden_automation_freq, T)*9500
-    # jnp.expand_dims(hidden_automation, axis=0)
-    # hidden_automation = jnp.tile(hidden_automation, (batch_size, 1, 1))
-    # print('hidden_automation shape: ', hidden_automation.shape)
-    return
-
-
 @app.cell
 def __(FilterModel, SAMPLE_RATE, jax, jnp, make_sine, nn, np, partial):
     # We don't vmap FilterModel in-place because we need the original version inside AutomationModel
@@ -215,7 +147,7 @@ def __(FilterModel, SAMPLE_RATE, jax, jnp, make_sine, nn, np, partial):
         @nn.compact
         def __call__(self, x, T: int) -> jnp.array:
             # make the learnable cutoff automation parameter.
-            freq = self.param("freq", nn.initializers.constant(8), 1)
+            freq = self.param("freq", nn.initializers.constant(3), 1)
             angles = jnp.linspace(0, 1, T, endpoint=False)
             automation = jnp.sin(freq * angles * 2 * np.pi)
             automation = jnp.expand_dims(automation, axis=0)
@@ -337,20 +269,51 @@ def __(
 
 
 @app.cell
-def __(Scattering1D, jax, train_sounds):
-    hs = train_sounds[0][0]
+def __(T, jnp, partial, train_sounds):
+    from audax.core import functional
 
-    scattering = Scattering1D(J=6, shape=44100, Q=8)
-    scat = scattering(train_sounds[0][0])
+    NFFT = 512
+    WIN_LEN = 400
+    HOP_LEN = 160
 
-    jit_scatter = jax.jit(scattering)
-    return hs, jit_scatter, scat, scattering
+    # creates a spectrogram helper
+    window = jnp.hanning(WIN_LEN)
+    spec_func = partial(
+        functional.spectrogram,
+        pad=0,
+        window=window,
+        n_fft=NFFT,
+        hop_length=HOP_LEN,
+        win_length=WIN_LEN,
+        power=2.0,
+        normalized=False,
+        center=True,
+        onesided=True,
+    )
+    fb = functional.melscale_fbanks(
+        n_freqs=(NFFT // 2) + 1, n_mels=64, sample_rate=T, f_min=60.0, f_max=7800.0
+    )
+    mel_spec_func = partial(functional.apply_melscale, melscale_filterbank=fb)
+    jax_spec = spec_func(train_sounds[0][0])
+    mel_spec = mel_spec_func(jax_spec)  # output of shape (1, 101, 64)
+    return (
+        HOP_LEN,
+        NFFT,
+        WIN_LEN,
+        fb,
+        functional,
+        jax_spec,
+        mel_spec,
+        mel_spec_func,
+        spec_func,
+        window,
+    )
 
 
 @app.cell
-def __(jit_scatter, plt, train_sounds):
+def __(mel_spec, plt):
     plt.imshow(
-        jit_scatter(train_sounds[1][0]),
+        mel_spec[0].T,
         aspect=2,
         cmap=plt.cm.gray_r,
         origin="lower",
@@ -370,22 +333,22 @@ def __(
     input_shape,
     jax,
     jit_inference_fn,
-    jit_scatter,
     jnp,
     key,
     np,
     optax,
     random,
+    spec_func,
     tqdm,
     train_model,
     train_params,
     train_state,
 ):
-    learning_rate = 3  # @param {type: 'number'}
+    learning_rate = 2  # @param {type: 'number'}
     momentum = 0.95  # @param {type: 'number'}
 
     # Create Train state
-    tx = optax.sgd(learning_rate, momentum)
+    tx = optax.adam(learning_rate)
     state = train_state.TrainState.create(
         apply_fn=train_model.apply, params=train_params, tx=tx
     )
@@ -399,8 +362,8 @@ def __(
             pred = train_model.apply(params, x, T)
 
             ## spec loss
-            pred_t = jit_scatter(pred[0][0])
-            y_t = jit_scatter(y[0][0])
+            pred_t = spec_func(pred[0][0])
+            y_t = spec_func(y[0][0])
             loss = (jnp.abs(pred_t - y_t)).mean()
 
             # # L1 time-domain loss
@@ -476,39 +439,6 @@ def __(
     )
 
 
-@app.cell(hide_code=True)
-def __():
-    # mo.output.clear()
-    # # Initialize the plot for animation
-    # fig, ax = plt.subplots(figsize=(8, 4))
-
-    # (line1,) = ax.plot([], [], label="Ground Truth")
-    # (line2,) = ax.plot([], [], label="Prediction")
-    # ax.set_title("Optimizing a Lowpass Filter's Cutoff")
-    # ax.set_ylabel("Cutoff Frequency (Hz)")
-    # ax.set_xlabel("Time (sec)")
-    # ax.set_ylim(0, SAMPLE_RATE / 2)
-    # ax.set_xlim(0, T / SAMPLE_RATE)
-    # plt.legend(loc="right")
-    # time_axis = np.arange(T) / SAMPLE_RATE
-
-
-    # # Function to update the plot for each frame
-    # def update_plot(frame):
-    #     line1.set_data(time_axis, hidden_automation[0, 0, :])
-    #     line2.set_data(time_axis, cutoff_data[frame])
-    #     return line1, line2
-
-
-    # # Creating the animation
-    # rc("animation", html="jshtml")
-    # anim = animation.FuncAnimation(
-    #     fig, update_plot, frames=len(cutoff_data), blit=True
-    # )
-    # HTML(anim.to_html5_video())
-    return
-
-
 @app.cell
 def __(freq_data, losses, plt):
     fig_1, ax1 = plt.subplots()
@@ -533,14 +463,14 @@ def __(freq_data, losses, plt):
 
 
 @app.cell
-def __(T, jit_scatter, jnp, train_model, x, y):
+def __(T, jnp, spec_func, train_model, x, y):
     # loss landscape
     def loss_fn_sigdiff(params):
         pred = train_model.apply(params, x, T)
 
         ## spec loss
-        pred_t = jit_scatter(pred[0][0])
-        y_t = jit_scatter(y[0][0])
+        pred_t = spec_func(pred[0][0])
+        y_t = spec_func(y[0][0])
         loss = (jnp.abs(pred_t - y_t)).mean()
 
         # # L1 time-domain loss
@@ -550,70 +480,129 @@ def __(T, jit_scatter, jnp, train_model, x, y):
 
 
 @app.cell
-def __(jax, jnp, loss_fn_sigdiff):
+def __(freq_data, jax, jnp, loss_fn_sigdiff, np):
     def test_freq(f):
-        # loss_fn_sigdiff({"params":{"freq":jnp.array([f])}})
         return loss_fn_sigdiff({"params": {"freq": jnp.array([f])}})
 
 
     test_freqs = jax.vmap(test_freq, 0)
     test_freqs_jitted = jax.jit(test_freqs)
-    oscillation_frequencies = jnp.linspace(-13, 13, 100)
-    return oscillation_frequencies, test_freq, test_freqs, test_freqs_jitted
+    freqs_explored = [np.min(freq_data) - 3, np.max([np.max(freq_data) + 1, 13])]
+    oscillation_frequencies = jnp.linspace(
+        freqs_explored[0], freqs_explored[1], 1000
+    )
+    test_losses = test_freqs_jitted(oscillation_frequencies)
+    return (
+        freqs_explored,
+        oscillation_frequencies,
+        test_freq,
+        test_freqs,
+        test_freqs_jitted,
+        test_losses,
+    )
 
 
 @app.cell
-def __(oscillation_frequencies, test_freqs_jitted):
-    test_outputs = test_freqs_jitted(oscillation_frequencies)
-    return test_outputs,
+def __():
+    # mo.output.clear()
+    # # Initialize the plot for animation
+    # fig, ax = plt.subplots(figsize=(8, 4))
+
+    # (line1,) = ax.plot([], [], label="loss landscape")
+    # scat1 = ax.scatter([], [], label="prediction")
+    # scat2 = ax.scatter([], [], label="optimal point")
+    # ax.set_title("Optimizing a Lowpass Filter's Cutoff")
+    # ax.set_ylabel("loss")
+    # ax.set_xlabel("oscillator frequency")
+    # ax.set_ylim(0, np.max(test_losses))
+    # ax.set_xlim(freqs_explored)
+    # plt.legend(loc="best")
+    # time_axis = oscillation_frequencies
 
 
-@app.cell
-def __(
-    HTML,
-    animation,
-    freq_data,
-    losses,
-    mo,
-    np,
-    oscillation_frequencies,
-    plt,
-    rc,
-    test_outputs,
-):
-    mo.output.clear()
-    # Initialize the plot for animation
-    fig, ax = plt.subplots(figsize=(8, 4))
-
-    (line1,) = ax.plot([], [], label="loss landscape")
-    scat1 = ax.scatter([], [], label="prediction")
-    ax.set_title("Optimizing a Lowpass Filter's Cutoff")
-    ax.set_ylabel("loss")
-    ax.set_xlabel("oscillator frequency")
-    ax.set_ylim(0, np.max(test_outputs))
-    ax.set_xlim(-14, 14)
-    plt.legend(loc="right")
-    time_axis = oscillation_frequencies
+    # # Function to update the plot for each frame
+    # def update_plot(frame):
+    #     line1.set_data(time_axis, test_losses)
+    #     scat1.set_offsets([freq_data[frame][0], losses[frame]])
+    #     scat2.set_offsets([10, np.min(test_losses)])
+    #     return line1, scat1
 
 
-    # Function to update the plot for each frame
-    def update_plot(frame):
-        line1.set_data(time_axis, test_outputs)
-        scat1.set_offsets([freq_data[frame][0], losses[frame]])
-        return line1, scat1
-
-
-    # Creating the animation
-    rc("animation", html="jshtml")
-    anim = animation.FuncAnimation(fig, update_plot, frames=len(losses), blit=True)
-    HTML(anim.to_html5_video())
-    return anim, ax, fig, line1, scat1, time_axis, update_plot
-
-
-@app.cell
-def __(losses):
-    losses
+    # # Creating the animation
+    # rc("animation", html="jshtml")
+    # anim = animation.FuncAnimation(fig, update_plot, frames=len(losses), blit=True)
+    # HTML(anim.to_html5_video())
     return
+
+
+@app.cell
+def __(mo):
+    # RL search for best parameter
+    mo.md(
+        """
+    We use q-learning to find the best parameter for the oscillator. 
+    Here the best value for the oscillator paramter ( $\\theta$ ) is 10.
+    We use td updates to achieve this, using the update 
+    $Q(S,A) = Q(S,A) + \\alpha(R_{t+1} + \\gamma Q(S_{t+1},A') - Q(S_t,A)$
+
+    If we were modifying the synthesizer parameters ourselfs, we would search for the desired parameters by incrementally changing the synthesizer's parameters, listening to the changes in the output sound, and deciding how to change the parameter based on what we heard. 
+
+    Here, we replicate this process with a reinforcement learning algorithm. At each time step $t$, the algorithm calculates the difference between the synthesizer's output and the sound that is being approximated. This difference is our negative valued reward $R_{t+1}$. The state $S_t$ is the value of the oscillator frequency (or the synthesizer's parameters). The action $A_t$ is incrementing or decrementing the oscillator frequency.
+
+    """
+    )
+    return
+
+
+@app.cell
+def __():
+    # what should our state/action space look like?
+    return
+
+
+@app.cell
+def __(np, s_prime):
+    class agent:
+        def __init__(
+            self,
+            learning_rate,
+            discount_factor,
+            trace_decay=0.1,
+            eps_decay=1,
+            eps_min=1e-4,
+        ):
+            """nback: size of past values/state size"""
+            self.lr = learning_rate
+            self.gamma = discount_factor
+            self.w = np.random.rand(self.nback) * 0.001
+            self.s = np.zeros(self.nback)
+            self.error = []
+            self.trace_decay = trace_decay
+            self.z = np.zeros(self.nback)
+
+        def update(self, reward):
+            # s_prime = self.s.at[0].set[reward]
+            s_prime[0] = reward
+            td_error = (
+                reward
+                + self.gamma * np.dot(self.w, s_prime)
+                - np.dot(self.w, self.s)
+            )
+            self.z = self.gamma * self.trace_decay * self.z + self.s
+            self.w = self.w + self.lr * td_error * self.z
+            self.error.append(td_error)
+            self.s = s_prime
+
+        def reset(self):
+            self.w = np.random.rand(self.nback) * 0.001
+            self.s = np.zeros(self.nback)
+            self.error = []
+
+        def log_values(self):
+            print("state:", self.s)
+            print("w:", self.w)
+            print("error", self.error[-1])
+    return agent,
 
 
 if __name__ == "__main__":
