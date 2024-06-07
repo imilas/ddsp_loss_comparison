@@ -132,13 +132,13 @@ def __():
     # @title QD Training Definitions Fields
     batch_size = 6  # @param {type:"integer"}
     episode_length = 1
-    num_iterations = 8000  # @param {type:"integer"}
+    num_iterations = 1000  # @param {type:"integer"}
     log_period = 10
     seed = 420  # @param {type:"integer"}
-    iso_sigma = 0.05  # @param {type:"number"}
-    line_sigma = 0.01  # @param {type:"number"}
+    iso_sigma = 0.1  # @param {type:"number"}
+    line_sigma = 0.1  # @param {type:"number"}
     num_init_cvt_samples = 50000  # @param {type:"integer"}
-    num_centroids = 32  # @param {type:"integer"}
+    num_centroids = 16  # @param {type:"integer"}
     reward_offset = 1e-6  # minimum reward value to make sure qd_score are positive
     return (
         batch_size,
@@ -162,11 +162,11 @@ def __(FaustContext, SAMPLE_RATE, fbox, jax):
     faust_code = f"""
     import("stdfaust.lib");
     cutoff = hslider("cutoff",500,101,1000,1);
-    osc_f = hslider("osc_f",3,1,100,0.5);
+    osc_f = hslider("osc_f",10,1,100,0.5);
     // osc_mag = hslider("osc_mag",400,10,400,1);
 
     FX = fi.lowpass(10,cutoff);
-    process = os.osc(osc_f)*300,_:["cutoff":+(_,_)->FX];
+    process = os.osc(osc_f)*400,_:["cutoff":+(_,_)->FX];
 
     """
 
@@ -385,6 +385,7 @@ def __(
     jnp,
     rand_key,
     random,
+    subkey,
 ):
     # @title Initialize environment, and population params
     # Init environment
@@ -406,19 +407,30 @@ def __(
     init_variables = batch_model(SAMPLE_RATE).init(subkey2, fake_batch, N_SAMPLES)
     # The init_variables start as the ground truth,
     # so we need to randomize them between -1 and 1
+    def random_split_like_tree(rng_key, target=None, treedef=None):
+        if treedef is None:
+            treedef = jax.tree_structure(target)
+        keys = jax.random.split(rng_key, treedef.num_leaves)
+        return jax.tree_unflatten(treedef, keys)
+
+    keys_tree = random_split_like_tree(subkey, init_variables)
+
     init_variables = jax.tree_util.tree_map(
-        lambda x: random.uniform(
-            subkey2, x.shape, minval=-1, maxval=1, dtype=jnp.float32
+        lambda x,key_list: random.uniform(
+            key_list, x.shape, minval=-1, maxval=1, dtype=jnp.float32
         ),
         init_variables,
+        keys_tree
     )
     return (
         fake_batch,
         init_states,
         init_variables,
         keys2,
+        keys_tree,
         my_env,
         random_key2,
+        random_split_like_tree,
         reset_fn,
         subkey2,
     )
@@ -428,11 +440,7 @@ def __(
 def __(QDTransition, jax, my_env):
     # @title Define the function to play a step with the policy in the environment
     @jax.jit
-    def play_step_fn(
-        env_state,
-        policy_params,
-        random_key,
-    ):
+    def play_step_fn(env_state,policy_params,random_key,):
         """
         Play an environment step and return the updated state and the transition.
         """
@@ -618,17 +626,12 @@ def __(
 
     pbar = tqdm(range(num_loops))
     for i in pbar:
-        print("loop %d/%d"%(i/num_loops),end="\r")
+        print("loop %d/%d"%(i,num_loops),end="\r")
         start_time = time.time()
-        (
-            repertoire,
-            emitter_state,
-            random_key5,
-        ), metrics = jit_scan(
+        (repertoire,emitter_state,random_key4,), metrics = jit_scan(
             init=(repertoire, emitter_state, random_key4),
         )
         timelapse = time.time() - start_time
-
         # log metrics
         logged_metrics = {
             "time": timelapse,
@@ -644,9 +647,7 @@ def __(
                 all_metrics[key] = jnp.concatenate([all_metrics[key], value])
             else:
                 all_metrics[key] = value
-
-        max_fitness = "{:.4f}".format(metrics["max_fitness"].max())
-        pbar.set_description(f"Max Fitness: {max_fitness}")
+        # pbar.set_description(f"Max Fitness: {max_fitness}")
         csv_logger.log(logged_metrics)
 
     # Save the repertoire
@@ -661,13 +662,11 @@ def __(
         jit_scan,
         key,
         logged_metrics,
-        max_fitness,
         metrics,
         num_loops,
         pbar,
         random_key,
         random_key4,
-        random_key5,
         repertoire,
         repertoire_path,
         start_time,
@@ -686,16 +685,15 @@ def __(
     jnp,
     model,
     np,
-    random_key5,
+    random_key4,
     repertoire_path,
-    subkey,
 ):
     # @title Loading the Repertoire
 
     # Init population of policies
-    random_key6, subkey4 = jax.random.split(random_key5)
+    random_key5, subkey4 = jax.random.split(random_key4)
     fake_params = model.init(
-        subkey, jnp.float32(np.random.random((N_CHANNELS, N_SAMPLES))), N_SAMPLES
+        subkey4, jnp.float32(np.random.random((N_CHANNELS, N_SAMPLES))), N_SAMPLES
     )
 
     _, reconstruction_fn = jax.flatten_util.ravel_pytree(fake_params)
@@ -705,7 +703,7 @@ def __(
     )
     return (
         fake_params,
-        random_key6,
+        random_key5,
         reconstruction_fn,
         repertoire_loaded,
         subkey4,
@@ -731,20 +729,15 @@ def __(jnp, repertoire_loaded):
 def __(SAMPLE_RATE, best_idx, jax, model, repertoire, show_audio, x):
     my_params = jax.tree_util.tree_map(lambda x: x[best_idx], repertoire.genotypes)
 
-    best_outputs,interm = model.apply(my_params, x, SAMPLE_RATE,mutable='intermediates')
+    best_outputs,best_found = model.apply(my_params, x, SAMPLE_RATE,mutable='intermediates')
     show_audio(best_outputs[0])
     show_audio(best_outputs[1])
-    return best_outputs, interm, my_params
+    return best_found, best_outputs, my_params
 
 
 @app.cell
-def __(interm):
-    interm
-    return
-
-
-@app.cell
-def __():
+def __(best_found):
+    best_found
     return
 
 
@@ -755,7 +748,7 @@ def __(
     episode_length,
     jnp,
     num_iterations,
-    qdax_plot,
+    plot_map_elites_results,
     repertoire,
 ):
     #@title Plotting
@@ -763,74 +756,10 @@ def __(
     # Create the x-axis array
     env_steps = jnp.arange(num_iterations) * episode_length * batch_size
 
-    print(repertoire.centroids.shape)
-    # Create the plots and the grid
-    fig, axes = qdax_plot.plot_map_elites_results(env_steps=env_steps, metrics=all_metrics,
-                                        repertoire=repertoire,
-                                        min_bd=-1., max_bd=1.,
-                                        grid_shape=2,
-                                        behavior_descriptor_length = 3
-                                        )
-
-    fig
-
     # Note that our MAP-Elites Grid will look sparse when the `num_centroids` hyperparameter is small.
-    return axes, env_steps, fig
-
-
-@app.cell
-def __(centroids):
-    centroids
-    return
-
-
-@app.cell
-def __():
-    # #@title Use the best parameters on a single item.
-
-    # my_params = jax.tree_util.tree_map(
-    #     lambda x: x[best_idx],
-    #     repertoire.genotypes
-    # )
-
-    # jit_env_reset = jax.jit(my_env.reset)
-    # jit_env_step = jax.jit(my_env.step)
-    # jit_inference_fn = jax.jit(partial(model.apply, mutable='intermediates'), static_argnums=[2])
-
-    # rng = jax.random.PRNGKey(seed=1)
-    # state = jit_env_reset(rng=rng)
-
-    # print('input shape: ', state.obs['x'].shape)
-
-    # action, mod_vars = jit_inference_fn(my_params, state.obs['x'], N_SAMPLES)
-
-    # # Note that our optimal parameters could have put the parametric EQ sections
-    # # in the wrong order.
-    # # Linear time invariant filters have this commutativity property.
-    # # We can do some permutation tricks to make the predicted parameters line up
-    # # with the ground truths.
-
-    # # If you can think through the permutations yourself,
-    # # just print out the variables and visually inspect them:
-    # print('prediction:', mod_vars['intermediates'])
-
-    # # We look at the order of the frequencies and use them to reindex the sections.
-    # freqs = [(np.array(mod_vars['intermediates'][f"Equalizer/Section {i}/Freq"]).item(), i) for i in range(3)]
-    # freqs = sorted(freqs, key=lambda x: x[0])
-    # suffixes = [x[1] for x in freqs]
-    # titles = [f'Equalizer/Section {i}/{p}' for i in range(3) for p in ['Freq', 'Gain', 'Bandwidth'] ] + ['Equalizer/Volume']
-    # keys = [f'Equalizer/Section {i}/{p}' for i in suffixes for p in ['Freq', 'Gain', 'Bandwidth'] ] + ['Equalizer/Volume']
-    # truths = [Section0_Freq, Section0_Gain, Section0_Bandwidth,
-    #           Section1_Freq, Section1_Gain, Section1_Bandwidth,
-    #           Section2_Freq, Section2_Gain, Section2_Bandwidth,
-    #           Final_Volume]
-
-    # print('After fixing permutation ordering:')
-    # for title, key, truth in zip(titles, keys, truths):
-    #     msg = f"{title}: " + "{:.3f}".format(np.array(mod_vars['intermediates'][key]).item())
-    #     msg += ' '*(max(0, 20-len(msg)))
-    #     print(f"{msg} truth: {truth}")
-    return
+    fig2, axes2 = plot_map_elites_results(env_steps=env_steps, metrics=all_metrics, repertoire=repertoire, min_bd=-1, max_bd=1)
+    fig2
+    return axes2, env_steps, fig2
 
 
 if __name__ == "__main__":
