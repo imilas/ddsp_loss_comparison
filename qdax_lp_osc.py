@@ -36,7 +36,7 @@ def __():
     from IPython.display import HTML
     from IPython.display import Audio
     import IPython.display as ipd
-
+    from helpers import qdax_plot
     from kymatio.jax import Scattering1D
 
     default_device = "cpu"  # or 'gpu'
@@ -65,6 +65,7 @@ def __():
         os,
         partial,
         plt,
+        qdax_plot,
         random,
         rc,
         time,
@@ -132,12 +133,12 @@ def __():
     batch_size = 6  # @param {type:"integer"}
     episode_length = 1
     num_iterations = 8000  # @param {type:"integer"}
-    log_period = 20
-    seed = 42  # @param {type:"integer"}
-    iso_sigma = 0.005  # @param {type:"number"}
+    log_period = 10
+    seed = 420  # @param {type:"integer"}
+    iso_sigma = 0.05  # @param {type:"number"}
     line_sigma = 0.01  # @param {type:"number"}
     num_init_cvt_samples = 50000  # @param {type:"integer"}
-    num_centroids = 16  # @param {type:"integer"}
+    num_centroids = 32  # @param {type:"integer"}
     reward_offset = 1e-6  # minimum reward value to make sure qd_score are positive
     return (
         batch_size,
@@ -157,17 +158,15 @@ def __():
 def __(FaustContext, SAMPLE_RATE, fbox, jax):
     # @title Define Target JAX Model and Ground Truth Parameters
 
-    # Let's make a parametric equalizer using a sequence of 3 filters.
-    # https://faustlibraries.grame.fr/libs/filters/#fipeak_eq
-    # Each "section" adjusts the gain near a certain frequency, with a bandwidth.
 
     faust_code = f"""
     import("stdfaust.lib");
-    cutoff = hslider("cutoff",5000,101,20000,1);
-    osc_f = hslider("osc_f",8,1,100,0.5);
-    osc_mag = hslider("osc_mag",400,10,400,1);
-    FX = fi.lowpass(1,cutoff);
-    process = os.osc(osc_f)*osc_mag,_:["cutoff":+(_,_)->FX]<:_,_;
+    cutoff = hslider("cutoff",500,101,1000,1);
+    osc_f = hslider("osc_f",3,1,100,0.5);
+    // osc_mag = hslider("osc_mag",400,10,400,1);
+
+    FX = fi.lowpass(10,cutoff);
+    process = os.osc(osc_f)*300,_:["cutoff":+(_,_)->FX];
 
     """
 
@@ -246,14 +245,9 @@ def __(
 
     rand_key, subkey = jax.random.split(init_key)
     keys = jax.random.split(subkey, num=batch_size)
-    batch_model = nn.vmap(
-        MyDSP,
-        in_axes=(0, None),
-        variable_axes={"params": 0},
-        split_rngs={"params": True},
-    )
+    batch_model = nn.vmap( MyDSP,in_axes=(0, None),variable_axes={"params": 0},split_rngs={"params": True},)
 
-    # Benchmark the speed of the inference function
+    # shape of outputs
     env_inference_fn(target_variables, x, N_SAMPLES).shape
     return (
         N_SAMPLES,
@@ -624,6 +618,7 @@ def __(
 
     pbar = tqdm(range(num_loops))
     for i in pbar:
+        print("loop %d/%d"%(i/num_loops),end="\r")
         start_time = time.time()
         (
             repertoire,
@@ -733,21 +728,60 @@ def __(jnp, repertoire_loaded):
 
 
 @app.cell
-def __(
-    SAMPLE_RATE,
-    best_idx,
-    env_inference_fn,
-    jax,
-    repertoire,
-    show_audio,
-    x,
-):
+def __(SAMPLE_RATE, best_idx, jax, model, repertoire, show_audio, x):
     my_params = jax.tree_util.tree_map(lambda x: x[best_idx], repertoire.genotypes)
 
-    best_outputs = env_inference_fn(my_params, x, SAMPLE_RATE)
+    best_outputs,interm = model.apply(my_params, x, SAMPLE_RATE,mutable='intermediates')
     show_audio(best_outputs[0])
     show_audio(best_outputs[1])
-    return best_outputs, my_params
+    return best_outputs, interm, my_params
+
+
+@app.cell
+def __(interm):
+    interm
+    return
+
+
+@app.cell
+def __():
+    return
+
+
+@app.cell
+def __(
+    all_metrics,
+    batch_size,
+    episode_length,
+    jnp,
+    num_iterations,
+    qdax_plot,
+    repertoire,
+):
+    #@title Plotting
+
+    # Create the x-axis array
+    env_steps = jnp.arange(num_iterations) * episode_length * batch_size
+
+    print(repertoire.centroids.shape)
+    # Create the plots and the grid
+    fig, axes = qdax_plot.plot_map_elites_results(env_steps=env_steps, metrics=all_metrics,
+                                        repertoire=repertoire,
+                                        min_bd=-1., max_bd=1.,
+                                        grid_shape=2,
+                                        behavior_descriptor_length = 3
+                                        )
+
+    fig
+
+    # Note that our MAP-Elites Grid will look sparse when the `num_centroids` hyperparameter is small.
+    return axes, env_steps, fig
+
+
+@app.cell
+def __(centroids):
+    centroids
+    return
 
 
 @app.cell
