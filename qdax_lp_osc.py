@@ -114,7 +114,7 @@ def __():
 
 
 @app.cell
-def __(Audio, ipd):
+def __(Audio, ipd, np, wavfile):
     SAMPLE_RATE = 44100
 
 
@@ -124,13 +124,21 @@ def __(Audio, ipd):
         ipd.display(
             Audio(data=data, rate=SAMPLE_RATE, normalize=False, autoplay=autoplay)
         )
-    return SAMPLE_RATE, show_audio
+
+
+    samplerate, goal_sound = wavfile.read(
+        "./sounds/target_sounds/two_osc_400_7.wav"
+    )
+    target = goal_sound[0:SAMPLE_RATE, 0]
+    target = np.array(target, dtype="float")
+    target = target / abs(target).max()
+    return SAMPLE_RATE, goal_sound, samplerate, show_audio, target
 
 
 @app.cell
 def __():
     # @title QD Training Definitions Fields
-    batch_size = 6  # @param {type:"integer"}
+    batch_size = 3  # @param {type:"integer"}
     episode_length = 1
     num_iterations = 1000  # @param {type:"integer"}
     log_period = 10
@@ -157,21 +165,15 @@ def __():
 @app.cell
 def __(FaustContext, SAMPLE_RATE, fbox, jax):
     # @title Define Target JAX Model and Ground Truth Parameters
-
-
     faust_code = f"""
     import("stdfaust.lib");
     cutoff = hslider("cutoff",500,101,1000,1);
     osc_f = hslider("osc_f",10,1,100,0.5);
-    // osc_mag = hslider("osc_mag",400,10,400,1);
-
-    FX = fi.lowpass(10,cutoff);
+    //osc_mag = hslider("osc_mag",200,10,400,1);
+    FX = fi.lowpass(5,cutoff);
     process = os.osc(osc_f)*400,_:["cutoff":+(_,_)->FX];
-
     """
-
     module_name = "MyDSP"
-
     with FaustContext():
         model_source_code = fbox.boxToSource(
             fbox.boxFromDSP(faust_code),
@@ -179,20 +181,15 @@ def __(FaustContext, SAMPLE_RATE, fbox, jax):
             module_name,
             ["-a", "jax/minimal.py"],
         )
-
     custom_globals = {}
-
     exec(model_source_code, custom_globals)  # security risk!
-
     MyDSP = custom_globals[module_name]
-
     model = MyDSP(SAMPLE_RATE)
-
     env_inference_fn = jax.jit(model.apply, static_argnums=[2])
-
     # The number of input channels the model takes.
     N_CHANNELS = model.getNumInputs()
     print("N_CHANNELS:", N_CHANNELS)
+    # what is the difference between model, batch_model, MyDSP, env_inference_fn
     return (
         MyDSP,
         N_CHANNELS,
@@ -245,7 +242,12 @@ def __(
 
     rand_key, subkey = jax.random.split(init_key)
     keys = jax.random.split(subkey, num=batch_size)
-    batch_model = nn.vmap( MyDSP,in_axes=(0, None),variable_axes={"params": 0},split_rngs={"params": True},)
+    batch_model = nn.vmap(
+        MyDSP,
+        in_axes=(0, None),
+        variable_axes={"params": 0},
+        split_rngs={"params": True},
+    )
 
     # shape of outputs
     env_inference_fn(target_variables, x, N_SAMPLES).shape
@@ -267,17 +269,19 @@ def __(
 
 
 @app.cell
-def __(N_SAMPLES, env_inference_fn, show_audio, target_variables, x):
+def __(
+    N_SAMPLES,
+    env_inference_fn,
+    show_audio,
+    target,
+    target_variables,
+    x,
+):
     outputs = env_inference_fn(target_variables, x, N_SAMPLES)
     show_audio(x)
     show_audio(outputs[0])
+    show_audio(target)
     return outputs,
-
-
-@app.cell
-def __():
-    # what is the difference between model, batch_model, MyDSP, env_inference_fn
-    return
 
 
 @app.cell
@@ -293,6 +297,7 @@ def __(
     jax,
     jnp,
     reward_offset,
+    target,
     target_variables,
 ):
     # @title Define a Custom Environment
@@ -360,7 +365,7 @@ def __(
             pred = env_inference_fn(actions, x, N_SAMPLES)
 
             # L1 time-domain loss
-            loss = jnp.abs(pred - y).mean()
+            loss = jnp.abs(pred - target).mean()
 
             # keep reward positive so that the QD-score works correctly.
             reward = jnp.maximum(reward_offset, 1.0 - loss)
@@ -390,11 +395,8 @@ def __(
     # @title Initialize environment, and population params
     # Init environment
     my_env = MyEnv(config=None)
-
-
     # Create the initial environment states
     random_key2, subkey2 = jax.random.split(rand_key)
-
     keys2 = jnp.repeat(
         jnp.expand_dims(subkey2, axis=0), repeats=batch_size, axis=0
     )
@@ -405,6 +407,8 @@ def __(
     # Pass a fake batch to get init_variables.
     fake_batch = jnp.zeros((batch_size, N_CHANNELS, N_SAMPLES), jnp.float32)
     init_variables = batch_model(SAMPLE_RATE).init(subkey2, fake_batch, N_SAMPLES)
+
+
     # The init_variables start as the ground truth,
     # so we need to randomize them between -1 and 1
     def random_split_like_tree(rng_key, target=None, treedef=None):
@@ -413,14 +417,15 @@ def __(
         keys = jax.random.split(rng_key, treedef.num_leaves)
         return jax.tree_unflatten(treedef, keys)
 
+
     keys_tree = random_split_like_tree(subkey, init_variables)
 
     init_variables = jax.tree_util.tree_map(
-        lambda x,key_list: random.uniform(
+        lambda x, key_list: random.uniform(
             key_list, x.shape, minval=-1, maxval=1, dtype=jnp.float32
         ),
         init_variables,
-        keys_tree
+        keys_tree,
     )
     return (
         fake_batch,
@@ -440,7 +445,11 @@ def __(
 def __(QDTransition, jax, my_env):
     # @title Define the function to play a step with the policy in the environment
     @jax.jit
-    def play_step_fn(env_state,policy_params,random_key,):
+    def play_step_fn(
+        env_state,
+        policy_params,
+        random_key,
+    ):
         """
         Play an environment step and return the updated state and the transition.
         """
@@ -461,7 +470,6 @@ def __(QDTransition, jax, my_env):
             state_desc=state_desc,
             next_state_desc=next_state_desc,
         )
-
         return next_state, policy_params, random_key, transition
     return play_step_fn,
 
@@ -485,26 +493,8 @@ def __(
 
     # Prepare the scoring function
     def bd_extraction_fn(data: QDTransition, mask: jnp.ndarray) -> Descriptor:
-
         matrix = jnp.concatenate(list(data.actions["params"].values()), axis=-1)
-
-        # todo:
-        # This is an opportunity to have a behavior space
-        # that's smaller than the action space.
-        # We could project the matrix from (batch_size, #num params)
-        # to (batch_size, behavior_descriptor_length).
-        # We don't have to do this right now because they happen to already be the same shape.
-
-        # Suppose `behavior_matrix` has shape (num_parameters, behavior_descriptor_length).
-        # Then we could do following projection
-        # matrix = matrix @ behavior_matrix
-
-        # We could also use domain knowledge to define new features based on
-        # the actions.
-
-        # No matter what, this assertion should be True
         assert matrix.shape[-1] == behavior_descriptor_length
-
         return matrix
 
 
@@ -626,9 +616,13 @@ def __(
 
     pbar = tqdm(range(num_loops))
     for i in pbar:
-        print("loop %d/%d"%(i,num_loops),end="\r")
+        print("loop %d/%d" % (i, num_loops), end="\r")
         start_time = time.time()
-        (repertoire,emitter_state,random_key4,), metrics = jit_scan(
+        (
+            repertoire,
+            emitter_state,
+            random_key4,
+        ), metrics = jit_scan(
             init=(repertoire, emitter_state, random_key4),
         )
         timelapse = time.time() - start_time
@@ -729,7 +723,9 @@ def __(jnp, repertoire_loaded):
 def __(SAMPLE_RATE, best_idx, jax, model, repertoire, show_audio, x):
     my_params = jax.tree_util.tree_map(lambda x: x[best_idx], repertoire.genotypes)
 
-    best_outputs,best_found = model.apply(my_params, x, SAMPLE_RATE,mutable='intermediates')
+    best_outputs, best_found = model.apply(
+        my_params, x, SAMPLE_RATE, mutable="intermediates"
+    )
     show_audio(best_outputs[0])
     show_audio(best_outputs[1])
     return best_found, best_outputs, my_params
@@ -751,13 +747,19 @@ def __(
     plot_map_elites_results,
     repertoire,
 ):
-    #@title Plotting
+    # @title Plotting
 
     # Create the x-axis array
     env_steps = jnp.arange(num_iterations) * episode_length * batch_size
 
     # Note that our MAP-Elites Grid will look sparse when the `num_centroids` hyperparameter is small.
-    fig2, axes2 = plot_map_elites_results(env_steps=env_steps, metrics=all_metrics, repertoire=repertoire, min_bd=-1, max_bd=1)
+    fig2, axes2 = plot_map_elites_results(
+        env_steps=env_steps,
+        metrics=all_metrics,
+        repertoire=repertoire,
+        min_bd=-1,
+        max_bd=1,
+    )
     fig2
     return axes2, env_steps, fig2
 
