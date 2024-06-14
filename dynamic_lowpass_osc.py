@@ -337,19 +337,19 @@ def __(T, jnp, partial, train_sounds):
 
 
 @app.cell
-def __(jax_spec, plt, spec_func, train_sounds):
+def __(jax_spec, plt):
     plt.imshow(
         jax_spec[0].T,
         aspect=2,
         cmap=plt.cm.gray_r,
         origin="lower",
     )
-    plt.imshow(
-        spec_func(train_sounds[0])[0].T,
-        aspect=2,
-        cmap=plt.cm.gray_r,
-        origin="lower",
-    )
+    # plt.imshow(
+    #     spec_func(train_sounds[0])[0].T,
+    #     aspect=2,
+    #     cmap=plt.cm.gray_r,
+    #     origin="lower",
+    # )
     plt.ylabel("FFT Bin Number")
     plt.xlabel("Frame Number")
     plt.title("Spectrograms")
