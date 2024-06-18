@@ -5,7 +5,7 @@ app = marimo.App(width="full")
 
 
 @app.cell
-def __(boxFromDSP, boxToSource):
+def __():
     import marimo as mo
     import functools
     from functools import partial
@@ -14,83 +14,41 @@ def __(boxFromDSP, boxToSource):
     import os
     import jax
     import jax.numpy as jnp
-    from jax import random
 
     from flax import linen as nn
-    from flax.training import train_state  # Useful dataclass to keep train state
-    from flax.core.frozen_dict import unfreeze
     import optax
 
-    from dawdreamer.faust import createLibContext, destroyLibContext, FaustContext
-    import dawdreamer.faust.box as box
-
-    from tqdm.notebook import tqdm
-    import time
     import numpy as np
     from scipy.io import wavfile
     import librosa
     import matplotlib.pyplot as plt
-    import matplotlib.animation as animation
-    from matplotlib import rc
 
-    from IPython.display import HTML
-    from IPython.display import Audio
-    import IPython.display as ipd
+    # import matplotlib.animation as animation
+    # from matplotlib import rc
 
-    from kymatio.jax import Scattering1D
+    # from IPython.display import HTML
+    # from IPython.display import Audio
+    # import IPython.display as ipd
+
+    from helpers import faust_to_jax as fj
+    from audax.core import functional
+    import copy
+    from helpers import ts_comparisions as ts_comparisons
+    import dtw
 
     default_device = "cpu"  # or 'gpu'
     jax.config.update("jax_platform_name", default_device)
 
     SAMPLE_RATE = 44100
-
-
-    def show_audio(data, autoplay=False):
-        if abs(data).max() > 1.0:
-            data /= abs(data).max()
-
-        ipd.display(
-            Audio(data=data, rate=SAMPLE_RATE, normalize=False, autoplay=autoplay)
-        )
-
-
-    def faust2jax(faust_code: str):
-        """
-        Convert faust code into a batched JAX model and a single-item inference function.
-
-        Inputs:
-        * faust_code: string of faust code.
-        """
-
-        module_name = "MyDSP"
-        with FaustContext():
-
-            box = boxFromDSP(faust_code)
-
-            jax_code = boxToSource(
-                box, "jax", module_name, ["-a", "jax/minimal.py"]
-            )
-
-        custom_globals = {}
-
-        exec(jax_code, custom_globals)  # security risk!
-
-        MyDSP = custom_globals[module_name]
     return (
-        Audio,
-        FaustContext,
-        HTML,
         Path,
         SAMPLE_RATE,
-        Scattering1D,
-        animation,
-        box,
-        createLibContext,
+        copy,
         default_device,
-        destroyLibContext,
-        faust2jax,
+        dtw,
+        fj,
+        functional,
         functools,
-        ipd,
         itertools,
         jax,
         jnp,
@@ -102,25 +60,13 @@ def __(boxFromDSP, boxToSource):
         os,
         partial,
         plt,
-        random,
-        rc,
-        show_audio,
-        time,
-        tqdm,
-        train_state,
-        unfreeze,
+        ts_comparisons,
         wavfile,
     )
 
 
 @app.cell
-def __(jax):
-    from helpers import faust_to_jax as fj
-    from audax.core import functional
-    import copy
-    # from kymatio.numpy import Scattering1D
-
-    SAMPLE_RATE = 44100
+def __(SAMPLE_RATE, fj, jax):
     fj.SAMPLE_RATE = SAMPLE_RATE
     key = jax.random.PRNGKey(10)
 
@@ -138,20 +84,20 @@ def __(jax):
     FX = fi.lowpass(5,cutoff);
     process = os.osc(osc_f)*400,_:["cutoff":+(_,_)->FX];
     """
-    return (
-        SAMPLE_RATE,
-        copy,
-        faust_code_1,
-        faust_code_2,
-        fj,
-        functional,
-        key,
-    )
+
+    faust_code_3 = """
+    import("stdfaust.lib");
+    cutoff = hslider("cutoff",500,101,1000,1);
+    osc_f = hslider("osc_f",3,1,20,0.5);
+    FX = fi.lowpass(5,cutoff);
+    process = os.osc(os.osc(osc_f)*4)*400,_:["cutoff":+(_,_)->FX];
+    """
+    return faust_code_1, faust_code_2, faust_code_3, key
 
 
 @app.cell
-def __(SAMPLE_RATE, faust_code_2, fj, jax, key):
-    DSP = fj.faust2jax(faust_code_2)
+def __(SAMPLE_RATE, faust_code_3, fj, jax, key):
+    DSP = fj.faust2jax(faust_code_3)
     DSP = DSP(SAMPLE_RATE)
     DSP_jit = jax.jit(DSP.apply, static_argnums=[2])
     noise = jax.random.uniform(
@@ -165,9 +111,9 @@ def __(SAMPLE_RATE, faust_code_2, fj, jax, key):
 
 
 @app.cell
-def __(faust_code_2, fj, key, mo):
+def __(faust_code_3, fj, key, mo):
     mo.output.clear()
-    target, _ = fj.process_noise_in_faust(faust_code_2, key)
+    target, _ = fj.process_noise_in_faust(faust_code_3, key)
     fj.show_audio(target)
     return target,
 
@@ -190,7 +136,7 @@ def __(mo):
 def __(DSP_jit, DSP_params, SAMPLE_RATE, copy, jnp, noise):
     def fill_template(template, pkey, fill_values):
         template = template.copy()
-        """template is the model parameter, pkey is the parameter we want to change, and fill_value is the value we want to change
+        """template is the model parameter, pkey is the parameter we want to change, and fill_value is the value we assign to the parameter
         """
         for i, k in enumerate(pkey):
             template["params"][k] = fill_values[i]
@@ -210,7 +156,9 @@ def __(DSP_jit, DSP_params, SAMPLE_RATE, copy, jnp, noise):
 @app.cell
 def __(DSP_params, np, outputs, param_linspace, plt, target):
     naive_loss = lambda x, y: np.abs(x - y).mean()
-    cosine_distance = lambda x,y: np.dot(x,y)/(np.linalg.norm(x)*np.linalg.norm(y))
+    cosine_distance = lambda x, y: np.dot(x, y) / (
+        np.linalg.norm(x) * np.linalg.norm(y)
+    )
 
     losses_naive = [naive_loss(x, target[0]) for x in outputs]
     plt.plot(param_linspace, losses_naive)
@@ -225,7 +173,7 @@ def __(DSP_params, np, outputs, param_linspace, plt, target):
     return cosine_distance, losses_naive, naive_loss
 
 
-@app.cell(hide_code=True)
+@app.cell
 def __(mo):
     mo.md(
         """
@@ -263,7 +211,7 @@ def __(SAMPLE_RATE, functional, jnp, outputs, partial, target):
         f_max=7800.0,
     )
 
-       
+
     mel_spec_func = partial(functional.apply_melscale, melscale_filterbank=fb)
     target_spec = spec_func(target)[0].T
     output_specs = [spec_func(x)[0].T for x in outputs]
@@ -280,34 +228,31 @@ def __(SAMPLE_RATE, functional, jnp, outputs, partial, target):
     )
 
 
-@app.cell
-def __(
-    DSP_params,
-    naive_loss,
-    output_specs,
-    param_linspace,
-    plt,
-    target_spec,
-):
-    losses_spec = [naive_loss(x, target_spec).mean() for x in output_specs]
-    plt.plot(param_linspace, losses_spec)
-    plt.axvline(
-        DSP_params["params"]["_dawdreamer/osc_f"],
-        color="#FF000055",
-        linestyle="dashed",
-        label="correct param",
-    )
-    plt.legend()
-    plt.title("naive loss with spectrograms")
-    return losses_spec,
+app._unparsable_cell(
+    r"""
+        losses_spec = [naive_loss(x, target_spec).mean() for x in output_specs]
+        plt.plot(param_linspace, losses_spec)
+        plt.axvline(
+            DSP_params[\"params\"][\"_dawdreamer/osc_f\"],
+            color=\"#FF000055\",
+            linestyle=\"dashed\",
+            label=\"correct param\",
+        )
+        plt.legend()
+        plt.title(\"naive loss with spectrograms\")
+    """,
+    name="__"
+)
 
 
 @app.cell
 def __(mo):
-    mo.md('''
+    mo.md(
+        """
     ### structural similarity measure.
     https://en.wikipedia.org/wiki/Structural_similarity_index_measure
-    ''')
+    """
+    )
     return
 
 
@@ -324,15 +269,21 @@ def __(
 ):
     from skimage.metrics import structural_similarity as ssim
     from skimage import img_as_float
-    @jax.jit 
+
+
+    @jax.jit
     def clipped_spec(x):
         jax_spec = spec_func(x)
         jax_spec = jnp.clip(jax_spec, a_min=0, a_max=1)
-        return jax_spec 
+        return jax_spec
+
 
     tsc = clipped_spec(target)
     clipped_specs = [clipped_spec(x) for x in outputs]
-    losses_ssim = [ssim(img_as_float(x[0]),img_as_float(tsc[0]),data_range=1) for x in clipped_specs ]
+    losses_ssim = [
+        ssim(img_as_float(x[0]), img_as_float(tsc[0]), data_range=1)
+        for x in clipped_specs
+    ]
     plt.plot(param_linspace, losses_ssim)
     plt.axvline(
         DSP_params["params"]["_dawdreamer/osc_f"],
@@ -347,10 +298,12 @@ def __(
 
 @app.cell
 def __(mo):
-    mo.md('''
+    mo.md(
+        """
     # Pre-trained models
     Let's try out leaf, and see if it's any different from spectrograms. 
-    ''')
+    """
+    )
     return
 
 
@@ -369,11 +322,13 @@ def __(
 ):
     from audax.frontends import leaf
 
-    leaf = leaf.Leaf(sample_rate=SAMPLE_RATE,min_freq=30,max_freq=20000)
-    leaf_params = leaf.init(key,target)
+    leaf = leaf.Leaf(sample_rate=SAMPLE_RATE, min_freq=30, max_freq=20000)
+    leaf_params = leaf.init(key, target)
     leaf_apply = jax.jit(leaf.apply)
-    target_leaf = leaf_apply(leaf_params,target)
-    output_leafs = [leaf_apply(leaf_params,jnp.expand_dims(x,axis=0)) for x in outputs]
+    target_leaf = leaf_apply(leaf_params, target)
+    output_leafs = [
+        leaf_apply(leaf_params, jnp.expand_dims(x, axis=0)) for x in outputs
+    ]
     losses_leaf = [naive_loss(x[0], target_leaf).mean() for x in output_leafs]
     plt.plot(param_linspace, losses_leaf)
     plt.axvline(
@@ -408,11 +363,14 @@ def __(
     target,
 ):
     from audax.frontends import sincnet
+
     snet = sincnet.SincNet(sample_rate=SAMPLE_RATE)
-    snet_params = snet.init(key,target)
+    snet_params = snet.init(key, target)
     snet_apply = jax.jit(snet.apply)
-    target_snet = snet_apply(snet_params,target)
-    output_snet = [snet_apply(snet_params,jnp.expand_dims(x,axis=0)) for x in outputs]
+    target_snet = snet_apply(snet_params, target)
+    output_snet = [
+        snet_apply(snet_params, jnp.expand_dims(x, axis=0)) for x in outputs
+    ]
     losses_snet = [naive_loss(x[0], target_snet).mean() for x in output_snet]
     plt.plot(param_linspace, losses_snet)
     plt.axvline(
@@ -436,19 +394,113 @@ def __(
 
 @app.cell
 def __(mo):
-    mo.md('''
-    Let's try non spectrogram features
+    mo.md(
+        """Let's try non spectrogram features:
+        We calculate the onset values, which show when in the spectrogram music "events" seem to be happening.
+        We then use CBD(compression based similariy) and dtw_losses to see if the onset of musical events matches. 
+        This gives us loss landscapes that are much more convex than spectrogram differences. 
 
-    ''')
+
+    """
+    )
+    return
+
+
+@app.cell
+def __(SAMPLE_RATE, librosa, np, outputs, target):
+    output_onsets = [
+        librosa.onset.onset_strength_multi(
+            y=np.array(y), sr=SAMPLE_RATE, channels=[0, 32, 64, 96, 128]
+        )
+        for y in outputs
+    ]
+    target_onset = librosa.onset.onset_strength_multi(
+        y=np.array(target), sr=SAMPLE_RATE, channels=[0, 32, 64, 96, 128]
+    )
+    return output_onsets, target_onset
+
+
+@app.cell
+def __(
+    DSP_params,
+    np,
+    output_onsets,
+    param_linspace,
+    plt,
+    target_onset,
+    ts_comparisons,
+):
+    # we calculate the onsets then use cbd loss
+
+    cbd = ts_comparisons.CompressionBasedDissimilarity()
+
+    cbd_loss = [
+        cbd.calculate(
+            np.array(target_onset[0]).sum(axis=0), np.array(x).sum(axis=0)
+        )
+        for x in output_onsets
+    ]
+
+    plt.plot(param_linspace, cbd_loss)
+    plt.axvline(
+        DSP_params["params"]["_dawdreamer/osc_f"],
+        color="#FF000055",
+        linestyle="dashed",
+        label="correct param",
+    )
+    plt.legend()
+    plt.title("cbd loss using onsets")
+    return cbd, cbd_loss
+
+
+@app.cell
+def __(
+    DSP_params,
+    dtw,
+    np,
+    output_onsets,
+    param_linspace,
+    plt,
+    target_onset,
+):
+    def dtw_loss(x1, x2):
+
+        query = np.array(x1).sum(axis=0)
+        template = np.array(x2).sum(axis=0)
+        alignment = dtw.dtw(
+            query,
+            template,
+            keep_internals=True,
+            step_pattern=dtw.rabinerJuangStepPattern(6, "c"),
+        )
+        return alignment.normalizedDistance
+
+
+    dtw_losses = [dtw_loss(target_onset[0], x) for x in output_onsets]
+
+    plt.plot(param_linspace, dtw_losses)
+    plt.axvline(
+        DSP_params["params"]["_dawdreamer/osc_f"],
+        color="#FF000055",
+        linestyle="dashed",
+        label="correct param",
+    )
+    plt.legend()
+    plt.title("dtw loss using onsets")
+    return dtw_loss, dtw_losses
+
+
+@app.cell
+def __():
+    # todo:
+    # - test out another program or two and show whether loss function is useful
+    # - use loss functions to train a network
     return
 
 
 @app.cell
 def __():
-    from helpers import librosa_features as lf
-
-    lf.extract_feature_means('sounds/target_sounds/two_osc_396_5.5.wav')
-    return lf,
+    return
 
 
 if __name__ == "__main__":

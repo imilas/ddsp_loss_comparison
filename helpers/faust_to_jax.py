@@ -71,7 +71,6 @@ def faust2jax(faust_code: str,module_name="MyDsp"):
 def process_noise_in_faust(faust_code, key):
     key, subkey = jax.random.split(key)
     DSP = faust2jax(faust_code)
-    key, subkey = jax.random.split(subkey)
     lp = DSP(SAMPLE_RATE)  # init model
     noise = jax.random.uniform(
         subkey, [DSP.getNumInputs(DSP), SAMPLE_RATE], minval=-1, maxval=1
