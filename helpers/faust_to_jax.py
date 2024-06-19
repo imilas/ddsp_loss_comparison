@@ -68,12 +68,12 @@ def faust2jax(faust_code: str,module_name="MyDsp"):
     MyDSP = custom_globals[module_name]
     return MyDSP
 
-def process_noise_in_faust(faust_code, key):
+def process_noise_in_faust(faust_code, key,length_seconds=1):
     key, subkey = jax.random.split(key)
     DSP = faust2jax(faust_code)
     lp = DSP(SAMPLE_RATE)  # init model
     noise = jax.random.uniform(
-        subkey, [DSP.getNumInputs(DSP), SAMPLE_RATE], minval=-1, maxval=1
+        subkey, [DSP.getNumInputs(DSP), SAMPLE_RATE*length_seconds], minval=-1, maxval=1
     )  # make input
     lp_params = lp.init(subkey, noise, SAMPLE_RATE)
     return lp.apply(lp_params, noise, SAMPLE_RATE), subkey
