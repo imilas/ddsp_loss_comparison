@@ -23,19 +23,18 @@ def __():
     import librosa
     import matplotlib.pyplot as plt
 
-    # import matplotlib.animation as animation
-    # from matplotlib import rc
-
-    # from IPython.display import HTML
-    # from IPython.display import Audio
-    # import IPython.display as ipd
-
     from helpers import faust_to_jax as fj
     from audax.core import functional
     import copy
     from helpers import ts_comparisions as ts_comparisons
     import dtw
 
+
+    # helpers
+    from helpers import onsets
+    from helpers import softdtw_jax
+
+    # end helpers
     default_device = "cpu"  # or 'gpu'
     jax.config.update("jax_platform_name", default_device)
 
@@ -56,10 +55,12 @@ def __():
         mo,
         nn,
         np,
+        onsets,
         optax,
         os,
         partial,
         plt,
+        softdtw_jax,
         ts_comparisons,
         wavfile,
     )
@@ -106,8 +107,14 @@ def __(SAMPLE_RATE, faust_code_3, fj, jax, key):
         minval=-1,
         maxval=1,
     )
+    noise_2 = jax.random.uniform(
+        jax.random.PRNGKey(20),
+        [DSP.getNumInputs(), SAMPLE_RATE],
+        minval=-1,
+        maxval=1,
+    )
     DSP_params = DSP.init(key, noise, SAMPLE_RATE)
-    return DSP, DSP_jit, DSP_params, noise
+    return DSP, DSP_jit, DSP_params, noise, noise_2
 
 
 @app.cell
@@ -133,7 +140,7 @@ def __(mo):
 
 
 @app.cell
-def __(DSP_jit, DSP_params, SAMPLE_RATE, copy, jnp, noise):
+def __(DSP_jit, DSP_params, SAMPLE_RATE, copy, jnp, noise_2):
     def fill_template(template, pkey, fill_values):
         template = template.copy()
         """template is the model parameter, pkey is the parameter we want to change, and fill_value is the value we assign to the parameter
@@ -149,7 +156,7 @@ def __(DSP_jit, DSP_params, SAMPLE_RATE, copy, jnp, noise):
         for x in param_linspace
     ]
 
-    outputs = [DSP_jit(p, noise, SAMPLE_RATE)[0] for p in programs]
+    outputs = [DSP_jit(p, noise_2, SAMPLE_RATE)[0] for p in programs]
     return fill_template, outputs, param_linspace, programs
 
 
@@ -208,7 +215,7 @@ def __(SAMPLE_RATE, functional, jnp, outputs, partial, target):
         n_mels=64,
         sample_rate=SAMPLE_RATE,
         f_min=60.0,
-        f_max=7800.0,
+        f_max=15000.0,
     )
 
 
@@ -228,21 +235,32 @@ def __(SAMPLE_RATE, functional, jnp, outputs, partial, target):
     )
 
 
-app._unparsable_cell(
-    r"""
-        losses_spec = [naive_loss(x, target_spec).mean() for x in output_specs]
-        plt.plot(param_linspace, losses_spec)
-        plt.axvline(
-            DSP_params[\"params\"][\"_dawdreamer/osc_f\"],
-            color=\"#FF000055\",
-            linestyle=\"dashed\",
-            label=\"correct param\",
-        )
-        plt.legend()
-        plt.title(\"naive loss with spectrograms\")
-    """,
-    name="__"
-)
+@app.cell
+def __(plt, target_spec):
+    plt.imshow(target_spec)
+    return
+
+
+@app.cell
+def __(
+    DSP_params,
+    naive_loss,
+    output_specs,
+    param_linspace,
+    plt,
+    target_spec,
+):
+    losses_spec = [naive_loss(x, target_spec).mean() for x in output_specs]
+    plt.plot(param_linspace, losses_spec)
+    plt.axvline(
+        DSP_params["params"]["_dawdreamer/osc_f"],
+        color="#FF000055",
+        linestyle="dashed",
+        label="correct param",
+    )
+    plt.legend()
+    plt.title("naive loss with spectrograms")
+    return losses_spec,
 
 
 @app.cell
@@ -297,6 +315,28 @@ def __(
 
 
 @app.cell
+def __(DSP_params, clipped_spec, jax, outputs, param_linspace, plt, tsc):
+    import dm_pix
+
+    ssim_jax = jax.jit(dm_pix.simse)
+    s_jax = [ssim_jax(tsc, clipped_spec(x)) for x in outputs]
+    plt.plot(param_linspace, s_jax)
+    plt.axvline(
+        DSP_params["params"]["_dawdreamer/osc_f"],
+        color="#FF000055",
+        linestyle="dashed",
+        label="correct param",
+    )
+    return dm_pix, s_jax, ssim_jax
+
+
+@app.cell
+def __(losses_ssim):
+    losses_ssim[0].shape, losses_ssim[0].dtype
+    return
+
+
+@app.cell
 def __(mo):
     mo.md(
         """
@@ -308,88 +348,51 @@ def __(mo):
 
 
 @app.cell
-def __(
-    DSP_params,
-    SAMPLE_RATE,
-    jax,
-    jnp,
-    key,
-    naive_loss,
-    outputs,
-    param_linspace,
-    plt,
-    target,
-):
-    from audax.frontends import leaf
+def __():
+    # from audax.frontends import leaf
 
-    leaf = leaf.Leaf(sample_rate=SAMPLE_RATE, min_freq=30, max_freq=20000)
-    leaf_params = leaf.init(key, target)
-    leaf_apply = jax.jit(leaf.apply)
-    target_leaf = leaf_apply(leaf_params, target)
-    output_leafs = [
-        leaf_apply(leaf_params, jnp.expand_dims(x, axis=0)) for x in outputs
-    ]
-    losses_leaf = [naive_loss(x[0], target_leaf).mean() for x in output_leafs]
-    plt.plot(param_linspace, losses_leaf)
-    plt.axvline(
-        DSP_params["params"]["_dawdreamer/osc_f"],
-        color="#FF000055",
-        linestyle="dashed",
-        label="correct param",
-    )
-    plt.legend()
-    plt.title("naive loss with leaf specs")
-    return (
-        leaf,
-        leaf_apply,
-        leaf_params,
-        losses_leaf,
-        output_leafs,
-        target_leaf,
-    )
+    # leaf = leaf.Leaf(sample_rate=SAMPLE_RATE, min_freq=30, max_freq=20000)
+    # leaf_params = leaf.init(key, target)
+    # leaf_apply = jax.jit(leaf.apply)
+    # target_leaf = leaf_apply(leaf_params, target)
+    # output_leafs = [
+    #     leaf_apply(leaf_params, jnp.expand_dims(x, axis=0)) for x in outputs
+    # ]
+    # losses_leaf = [naive_loss(x[0], target_leaf).mean() for x in output_leafs]
+    # plt.plot(param_linspace, losses_leaf)
+    # plt.axvline(
+    #     DSP_params["params"]["_dawdreamer/osc_f"],
+    #     color="#FF000055",
+    #     linestyle="dashed",
+    #     label="correct param",
+    # )
+    # plt.legend()
+    # plt.title("naive loss with leaf specs")
+    return
 
 
 @app.cell
-def __(
-    DSP_params,
-    SAMPLE_RATE,
-    jax,
-    jnp,
-    key,
-    naive_loss,
-    outputs,
-    param_linspace,
-    plt,
-    target,
-):
-    from audax.frontends import sincnet
+def __():
+    # from audax.frontends import sincnet
 
-    snet = sincnet.SincNet(sample_rate=SAMPLE_RATE)
-    snet_params = snet.init(key, target)
-    snet_apply = jax.jit(snet.apply)
-    target_snet = snet_apply(snet_params, target)
-    output_snet = [
-        snet_apply(snet_params, jnp.expand_dims(x, axis=0)) for x in outputs
-    ]
-    losses_snet = [naive_loss(x[0], target_snet).mean() for x in output_snet]
-    plt.plot(param_linspace, losses_snet)
-    plt.axvline(
-        DSP_params["params"]["_dawdreamer/osc_f"],
-        color="#FF000055",
-        linestyle="dashed",
-        label="correct param",
-    )
-    plt.legend()
-    plt.title("naive loss with snet specs")
-    return (
-        losses_snet,
-        output_snet,
-        sincnet,
-        snet,
-        snet_apply,
-        snet_params,
-        target_snet,
-    )
+    # snet = sincnet.SincNet(sample_rate=SAMPLE_RATE)
+    # snet_params = snet.init(key, target)
+    # snet_apply = jax.jit(snet.apply)
+    # target_snet = snet_apply(snet_params, target)
+    # output_snet = [
+    #     snet_apply(snet_params, jnp.expand_dims(x, axis=0)) for x in outputs
+    # ]
+    # losses_snet = [naive_loss(x[0], target_snet).mean() for x in output_snet]
+    # plt.plot(param_linspace, losses_snet)
+    # plt.axvline(
+    #     DSP_params["params"]["_dawdreamer/osc_f"],
+    #     color="#FF000055",
+    #     linestyle="dashed",
+    #     label="correct param",
+    # )
+    # plt.legend()
+    # plt.title("naive loss with snet specs")
+    return
 
 
 @app.cell
@@ -399,6 +402,8 @@ def __(mo):
         We calculate the onset values, which show when in the spectrogram music "events" seem to be happening.
         We then use CBD(compression based similariy) and dtw_losses to see if the onset of musical events matches. 
         This gives us loss landscapes that are much more convex than spectrogram differences. 
+        
+        Neither of these implementations are differentiable when using jax, but we show that they maybe useful in some other types of search. Furthermore, the onset+dtw method is reporoduced in jax later in this notebook. 
 
 
     """
@@ -491,10 +496,118 @@ def __(
 
 
 @app.cell
-def __():
-    # todo:
-    # - test out another program or two and show whether loss function is useful
-    # - use loss functions to train a network
+def __(mo):
+    mo.md(
+        """
+    # DTW using jax:
+
+    - Detect onsets in jax
+    - Use softdtw 
+    """
+    )
+    return
+
+
+@app.cell
+def __(SAMPLE_RATE, librosa, mo, np, plt, target):
+    test_onset = librosa.onset.onset_strength_multi(
+        y=np.array(target),
+        sr=SAMPLE_RATE,
+        channels=[16, 32, 64, 80],
+        # y=np.array(target),
+    )
+
+    fig, axs = plt.subplots(1, 3, figsize=(14, 3))
+    axs[0].specgram(target[0].T)
+    axs[1].plot(test_onset[0].T)
+    axs[2].plot(test_onset[0].T.sum(axis=1))
+
+    mo.md(
+        f"""# How onsets look in librosa
+    In librosa we can extract onsets (which look like smoothed loudness functions for various frequency ranges).
+
+    To emulate this with jax we need to:
+
+    1. Extract STFT of the signal 
+    2. Calculate the loudness (we just do 1 frequency range, which is the entire frequency range)
+    3. Smooth the loudness function using gaussian blur
+
+    {mo.as_html(plt.gca())}"""
+    )
+    return axs, fig, test_onset
+
+
+@app.cell
+def __(jax, jnp, mo, onsets, plt, target):
+    stft = jax.scipy.signal.stft(target, boundary="even")  # create spectrogram
+    norm_spec = jnp.abs(stft[2])[0] ** 0.5  # normalize the spectrogram
+    kernel = onsets.gaussian_kernel1d(
+        3, 0, 10
+    )  # create a gaussian kernel (sigma,order,radius)
+    ts = norm_spec.sum(axis=0)  # calculate amplitude changes
+    onsets_output = jnp.correlate(
+        ts, kernel, mode="valid"
+    )  # smooth amplitude curve
+    fig1, axs1 = plt.subplots(1, 3, figsize=(14, 3))
+
+    axs1[0].imshow(norm_spec)
+    axs1[1].plot(kernel)
+    axs1[2].plot(onsets_output)
+    mo.md(
+        f"""
+    # Onset calculation with jax
+    Here we see the outputs of the 3 step process:
+
+    1. The stft spectrogram
+    2. the gaussian kernel
+    3. The onset function
+
+    The output differs a bit from the librosa method, but we don't know if it's better or worse. The peaks and valleys seem to match up, which is fairly important for the dtw function  which we implement next. 
+
+    {mo.as_html(plt.gca())}"""
+    )
+    return axs1, fig1, kernel, norm_spec, onsets_output, stft, ts
+
+
+@app.cell
+def __(jax, jnp, softdtw_jax):
+
+    dtw_jax = softdtw_jax.SoftDTW(gamma=0.01)
+    dtw_jit = jax.jit(dtw_jax)
+    time_series = [
+        jnp.cos((x + 1) * jnp.linspace(0, 2 * jnp.pi, 100)) for x in range(10)
+    ]
+    goal_ts = time_series[5].copy()
+    return dtw_jax, dtw_jit, goal_ts, time_series
+
+
+@app.cell
+def __(jnp, onsets, outputs, target):
+    # get onsets for all outputs, calculate loss using dtw_jit
+    target_onset_jax = onsets.onset_1d(target)
+    output_onsets_jax = [
+        onsets.onset_1d(jnp.expand_dims(o, axis=0)) for o in outputs
+    ]
+    return output_onsets_jax, target_onset_jax
+
+
+@app.cell
+def __(dtw_jit, output_onsets_jax, target_onset_jax):
+    dtw_losses_jax = [dtw_jit(target_onset_jax, x) for x in output_onsets_jax]
+    return dtw_losses_jax,
+
+
+@app.cell
+def __(DSP_params, dtw_losses_jax, param_linspace, plt):
+    plt.plot(param_linspace, dtw_losses_jax)
+    plt.axvline(
+        DSP_params["params"]["_dawdreamer/osc_f"],
+        color="#FF000055",
+        linestyle="dashed",
+        label="correct param",
+    )
+    plt.legend()
+    plt.title("jax dtw loss")
     return
 
 
