@@ -5,10 +5,9 @@ import jax.numpy as jnp
 def onset_1d(target):
     stft = jax.scipy.signal.stft(target,boundary='even') # create spectrogram 
     norm_spec = jnp.abs(stft[2])[0]**0.5 # normalize the spectrogram
-    kernel = gaussian_kernel1d(3,0,10
-                                            ) #create a gaussian kernel (sigma,order,radius)
+    kernel = gaussian_kernel1d(3,0,10) #create a gaussian kernel (sigma,order,radius)
     ts = norm_spec.sum(axis=0) # calculate amplitude changes 
-    onsets = jnp.correlate(ts,kernel,mode="valid") # smooth amplitude curve 
+    onsets = jnp.convolve(ts,kernel,mode="same") # smooth amplitude curve 
     return onsets
 
 def gaussian_kernel1d(sigma, order, radius):

@@ -31,7 +31,7 @@ def __():
 
     from helpers import faust_to_jax as fj
     from helpers import onsets
-    from helpers.softdtw_jax import SoftDTW
+    from helpers import softdtw_jax
 
 
     default_device = "cpu"  # or 'gpu'
@@ -77,13 +77,11 @@ def __():
         jax_spec = spec_func(x)
         jax_spec = jnp.clip(jax_spec, a_min=0, a_max=1)
         return jax_spec
-        
     return (
         HOP_LEN,
         NFFT,
         Path,
         SAMPLE_RATE,
-        SoftDTW,
         WIN_LEN,
         clipped_spec,
         copy,
@@ -108,6 +106,7 @@ def __():
         os,
         partial,
         plt,
+        softdtw_jax,
         spec_func,
         train_state,
         unfreeze,
@@ -151,36 +150,37 @@ def __(SAMPLE_RATE, fj, jax):
     # process = fi.lowpass(1, cutoff);
     #  """
 
-    true_params = {"lp_cut": 3000, "hp_cut": 2000}
-    init_params = {"lp_cut": 10000, "hp_cut": 500}
-    faust_code_target = f"""
-    import("stdfaust.lib");
-    lp_cut = hslider("lp_cut", {true_params["lp_cut"]}, 2000., 20000., .01);
-    hp_cut = hslider("hp_cut", {true_params["hp_cut"]}, 20., 5000., .01);
-    process = fi.lowpass(5, lp_cut):fi.highpass(5,hp_cut);
-    """
-    faust_code_instrument = f"""
-    import("stdfaust.lib");
-    lp_cut = hslider("lp_cut", {init_params["lp_cut"]}, 2000., 20000., .01);
-    hp_cut = hslider("hp_cut",{true_params["hp_cut"]}, 20., 5000., .01);
-    process = fi.lowpass(5, lp_cut):fi.highpass(5,hp_cut);
-     """
-
+    # true_params = {"lp_cut": 3000, "hp_cut": 2000}
+    # init_params = {"lp_cut": 10000, "hp_cut": 500}
     # faust_code_target = f"""
     # import("stdfaust.lib");
-    # osc_f = hslider("freq",3,1,20,0.5);
-    # cutoff = hslider("cutoff",1000,101,1000,1);
-    # FX = fi.lowpass(5,cutoff);
-    # process = os.osc(os.osc(osc_f)*4)*400,_:["cutoff":+(_,_)->FX];
+    # lp_cut = hslider("lp_cut", {true_params["lp_cut"]}, 2000., 20000., .01);
+    # hp_cut = hslider("hp_cut", {true_params["hp_cut"]}, 20., 5000., .01);
+    # process = fi.lowpass(5, lp_cut):fi.highpass(5,hp_cut);
     # """
-
     # faust_code_instrument = f"""
     # import("stdfaust.lib");
-    # osc_f = hslider("freq",20,1,20,0.5);
-    # cutoff = hslider("cutoff",10000,101,20000,1);
-    # FX = fi.lowpass(5,cutoff);
-    # process = os.osc(os.osc(osc_f)*4)*400,_:["cutoff":+(_,_)->FX];
-    # """
+    # lp_cut = hslider("lp_cut", {init_params["lp_cut"]}, 2000., 20000., .01);
+    # hp_cut = hslider("hp_cut",{true_params["hp_cut"]}, 20., 5000., .01);
+    # process = fi.lowpass(5, lp_cut):fi.highpass(5,hp_cut);
+    #  """
+
+    true_params = {"lp_cut": 1000}
+    init_params = {"lp_cut": 10000}
+
+    faust_code_target = f"""
+    import("stdfaust.lib");
+    cutoff = hslider("lp_cut",{true_params["lp_cut"]},101,20000,1);
+    FX = fi.lowpass(5,cutoff);
+    process = os.osc(os.osc(3))*1000,_:["lp_cut":+(_,_)->FX];
+    """
+
+    faust_code_instrument = f"""
+    import("stdfaust.lib");
+    cutoff = hslider("lp_cut",{init_params["lp_cut"]},101,20000,1);
+    FX = fi.lowpass(5,cutoff);
+    process = os.osc(os.osc(3))*400,_:["lp_cut":+(_,_)->FX];
+    """
     return (
         faust_code_instrument,
         faust_code_target,
@@ -188,11 +188,6 @@ def __(SAMPLE_RATE, fj, jax):
         key,
         true_params,
     )
-
-
-@app.cell
-def __():
-    return
 
 
 @app.cell
@@ -244,7 +239,6 @@ def __(
 
 @app.cell
 def __(fb, functional, partial, plt, spec_func, target_sound):
-
     mel_spec_func = partial(functional.apply_melscale, melscale_filterbank=fb)
     target_spec = spec_func(target_sound)[0]
     plt.imshow(target_spec)
@@ -273,38 +267,51 @@ def __(mo):
 
 
 @app.cell
-def __(SoftDTW, init_sound, jax, onsets, target_sound):
+def __(jax, softdtw_jax):
     # strctural similarty measure
 
     # dm_pix.ssim(clipped_spec(target_sound), clipped_spec(target_sound))
 
-    dtw_jax = SoftDTW(gamma=0.01)
+    dtw_jax = softdtw_jax.SoftDTW(gamma=0.1)
     dtw_jit = jax.jit(dtw_jax)
-
-    dtw_jit(onsets.onset_1d(target_sound),onsets.onset_1d(init_sound))
-
     return dtw_jax, dtw_jit
+
+
+@app.cell
+def __(jax, jnp, partial, spec_func):
+    from helpers.onsets import gaussian_kernel1d
+
+    kernel = jnp.array(
+        gaussian_kernel1d(3, 0, 10)
+    )  # create a gaussian kernel (sigma,order,radius)
+
+
+    @partial(jax.jit, static_argnames=["kernel"])
+    def onset_1d(target, k):
+        # stft = jax.scipy.signal.stft(target,boundary='even') # create spectrogram
+        # norm_spec = jnp.abs(stft[2])[0]**0.5 # normalize the spectrogram
+        # ts = norm_spec.sum(axis=0) # calculate amplitude changes
+        ts = spec_func(target)[0].sum(axis=1)
+        onsets = jnp.convolve(ts, k, mode="same")  # smooth amplitude curve
+        return onsets
+    return gaussian_kernel1d, kernel, onset_1d
 
 
 @app.cell
 def __(
     SAMPLE_RATE,
-    dtw_jit,
     init_params,
     instrument,
     instrument_jit,
     instrument_params,
     jax,
-    jnp,
     noise,
     np,
-    onsets,
     optax,
-    target_sound,
     train_state,
     true_params,
 ):
-    learning_rate = 0.0001
+    learning_rate = 0.02
     # Create Train state
     tx = optax.adam(learning_rate)
     state = train_state.TrainState.create(
@@ -316,16 +323,18 @@ def __(
     def loss_fn(params):
         pred = instrument.apply(params, noise, SAMPLE_RATE)
         # L1 time-domain loss
+        loss = 0
         # loss = (jnp.abs(pred - target_sound)).mean()
         # loss = naive_loss(spec_func(pred)[0],target_spec)
         # loss = 1/dm_pix.ssim(clipped_spec(target_sound),clipped_spec(pred))
         # loss = dm_pix.simse(clipped_spec(target_sound),clipped_spec(pred))
-
-        loss = jnp.abs(1/dtw_jit(onsets.onset_1d(target_sound),onsets.onset_1d(pred)))
+        # loss = dtw_jax(pred,target_sound)
+        # loss += dtw_jit(onset_1d(target_sound,kernel),onset_1d(pred,kernel))
+        # jax.debug.print("onsets:{y},loss:{l}",y=onsets.onset_1d(pred)[0:3],l=loss)
         return loss, pred
 
 
-    # @jax.jit
+    @jax.jit
     def train_step(state):
         """Train for a single step."""
         grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
@@ -339,7 +348,7 @@ def __(
     search_params = {
         k: [init_params[k]] for k in true_params.keys()
     }  # will record parameters while searching
-    for n in range(10):
+    for n in range(200):
         state, loss = train_step(state)
         if n % 1 == 0:
             audio, mod_vars = instrument_jit(state.params, noise, SAMPLE_RATE)
@@ -368,13 +377,6 @@ def __(
         train_step,
         tx,
     )
-
-
-@app.cell
-def __():
-    # search_params["lp_cut"].append(1)
-    # search_params
-    return
 
 
 @app.cell
@@ -411,13 +413,15 @@ def __(losses, plt, search_params, true_params):
 
 
 @app.cell
-def __(plt, sounds, spec_func):
+def __(mo, plt, sounds, spec_func):
+    mo.output.clear()
     plt.imshow(spec_func(sounds[-1])[0])
     return
 
 
 @app.cell
-def __(fj, sounds):
+def __(fj, mo, sounds):
+    mo.output.clear()
     fj.show_audio(sounds[-1])
     return
 
@@ -441,9 +445,11 @@ def __(
     instrument_params,
     jax,
     length_seconds,
+    mo,
     naive_loss,
     spec_func,
 ):
+    mo.output.clear()
     # instrument_jit(instrument_params, noise, SAMPLE_RATE)[0]
     noise_1 = jax.random.uniform(
         jax.random.PRNGKey(10),
@@ -478,6 +484,14 @@ def __(
     fj.show_audio(processed_noise_1)
     fj.show_audio(processed_noise_2)
     return noise_1, noise_2, processed_noise_1, processed_noise_2
+
+
+@app.cell
+def __():
+    # todo
+    # test wavelets
+    # organize code
+    return
 
 
 if __name__ == "__main__":

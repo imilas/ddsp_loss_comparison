@@ -67,6 +67,12 @@ def __():
 
 
 @app.cell
+def __(jax):
+    jax.__version__
+    return
+
+
+@app.cell
 def __(SAMPLE_RATE, fj, jax):
     fj.SAMPLE_RATE = SAMPLE_RATE
     key = jax.random.PRNGKey(10)
@@ -402,7 +408,7 @@ def __(mo):
         We calculate the onset values, which show when in the spectrogram music "events" seem to be happening.
         We then use CBD(compression based similariy) and dtw_losses to see if the onset of musical events matches. 
         This gives us loss landscapes that are much more convex than spectrogram differences. 
-        
+
         Neither of these implementations are differentiable when using jax, but we show that they maybe useful in some other types of search. Furthermore, the onset+dtw method is reporoduced in jax later in this notebook. 
 
 
@@ -546,7 +552,7 @@ def __(jax, jnp, mo, onsets, plt, target):
     )  # create a gaussian kernel (sigma,order,radius)
     ts = norm_spec.sum(axis=0)  # calculate amplitude changes
     onsets_output = jnp.correlate(
-        ts, kernel, mode="valid"
+        ts, kernel, mode="same"
     )  # smooth amplitude curve
     fig1, axs1 = plt.subplots(1, 3, figsize=(14, 3))
 
@@ -571,7 +577,6 @@ def __(jax, jnp, mo, onsets, plt, target):
 
 @app.cell
 def __(jax, jnp, softdtw_jax):
-
     dtw_jax = softdtw_jax.SoftDTW(gamma=0.01)
     dtw_jit = jax.jit(dtw_jax)
     time_series = [
@@ -612,7 +617,56 @@ def __(DSP_params, dtw_losses_jax, param_linspace, plt):
 
 
 @app.cell
+def __(jax, jnp):
+    from helpers.onsets import gaussian_kernel1d
+    def onset_1d(target):
+        stft = jax.scipy.signal.stft(target,boundary='even') # create spectrogram 
+        norm_spec = jnp.abs(stft[2])[0]**0.5 # normalize the spectrogram
+        kernel = gaussian_kernel1d(3,0,10) #create a gaussian kernel (sigma,order,radius)
+        ts = norm_spec.sum(axis=0) # calculate amplitude changes 
+        onsets = jnp.convolve(ts,kernel,mode="same") # smooth amplitude curve 
+        return onsets
+    onset_1d
+    return gaussian_kernel1d, onset_1d
+
+
+@app.cell
+def __(jax, onset_1d, target):
+    # sometimes the instrument creates NAN outputs, which throws everthing off
+    def loss(t):
+        return onset_1d(t).sum()
+    onset_vg = jax.value_and_grad(loss)
+    onset_vg(target)
+    return loss, onset_vg
+
+
+@app.cell
 def __():
+    # jax.config.update("jax_debug_nans", False)
+    # from helpers.onsets import gaussian_kernel1d
+
+
+    # kernel = jnp.array(gaussian_kernel1d(3,0,10)) #create a gaussian kernel (sigma,order,radius)
+
+    # @partial(jax.jit,static_argnames=["kernel"])
+    # def onset_1d(target,k):
+    #     # stft = jax.scipy.signal.stft(target,boundary='even') # create spectrogram 
+    #     # norm_spec = jnp.abs(stft[2])[0]**0.5 # normalize the spectrogram
+    #     # ts = norm_spec.sum(axis=0) # calculate amplitude changes 
+    #     ts = spec_func(target)[0].sum(axis=1)
+    #     onsets = jnp.convolve(ts,k,mode="same") # smooth amplitude curve 
+    #     return onsets
+
+
+
+    # def loss_fn_2(params):
+    #     pred = instrument.apply(params, noise, SAMPLE_RATE)
+    #     loss = onset_1d(pred,kernel).mean() 
+    #     return loss, pred
+
+    # grad_fn_2 = jax.value_and_grad(loss_fn_2, has_aux=True)
+    # (l, pred), grads = grad_fn_2(instrument_params)
+    # l,pred,grads
     return
 
 
