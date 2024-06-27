@@ -165,14 +165,14 @@ def __(SAMPLE_RATE, fj, jax):
     # process = fi.lowpass(5, lp_cut):fi.highpass(5,hp_cut);
     #  """
 
-    true_params = {"lp_cut": 1000}
-    init_params = {"lp_cut": 10000}
+    true_params = {"lp_cut": 2000}
+    init_params = {"lp_cut": 1000}
 
     faust_code_target = f"""
     import("stdfaust.lib");
     cutoff = hslider("lp_cut",{true_params["lp_cut"]},101,20000,1);
     FX = fi.lowpass(5,cutoff);
-    process = os.osc(os.osc(3))*1000,_:["lp_cut":+(_,_)->FX];
+    process = os.osc(os.osc(3))*400,_:["lp_cut":+(_,_)->FX];
     """
 
     faust_code_instrument = f"""
@@ -261,6 +261,8 @@ def __(mo):
         - Naive loss with spectrogram
         - SSIM loss (gets close to correct )
         - SIMSE loss (Finds correct parameter)
+        - time warping loss
+        - scattering wavelets
     """
     )
     return
@@ -272,14 +274,15 @@ def __(jax, softdtw_jax):
 
     # dm_pix.ssim(clipped_spec(target_sound), clipped_spec(target_sound))
 
-    dtw_jax = softdtw_jax.SoftDTW(gamma=0.1)
+    dtw_jax = softdtw_jax.SoftDTW(gamma=0.8)
     dtw_jit = jax.jit(dtw_jax)
     return dtw_jax, dtw_jit
 
 
 @app.cell
-def __(jax, jnp, partial, spec_func):
+def __(SAMPLE_RATE, jax, jnp, partial, spec_func):
     from helpers.onsets import gaussian_kernel1d
+    from kymatio.jax import Scattering1D
 
     kernel = jnp.array(
         gaussian_kernel1d(3, 0, 10)
@@ -294,24 +297,39 @@ def __(jax, jnp, partial, spec_func):
         ts = spec_func(target)[0].sum(axis=1)
         onsets = jnp.convolve(ts, k, mode="same")  # smooth amplitude curve
         return onsets
-    return gaussian_kernel1d, kernel, onset_1d
+
+
+    J = 6  # higher creates smoother loss but more costly
+    Q = 1
+
+    scat_jax = Scattering1D(J, SAMPLE_RATE, Q)
+    return J, Q, Scattering1D, gaussian_kernel1d, kernel, onset_1d, scat_jax
+
+
+@app.cell
+def __():
+    return
 
 
 @app.cell
 def __(
     SAMPLE_RATE,
+    dtw_jit,
     init_params,
     instrument,
     instrument_jit,
     instrument_params,
     jax,
+    kernel,
     noise,
     np,
+    onset_1d,
     optax,
+    target_sound,
     train_state,
     true_params,
 ):
-    learning_rate = 0.02
+    learning_rate = 0.008
     # Create Train state
     tx = optax.adam(learning_rate)
     state = train_state.TrainState.create(
@@ -329,7 +347,8 @@ def __(
         # loss = 1/dm_pix.ssim(clipped_spec(target_sound),clipped_spec(pred))
         # loss = dm_pix.simse(clipped_spec(target_sound),clipped_spec(pred))
         # loss = dtw_jax(pred,target_sound)
-        # loss += dtw_jit(onset_1d(target_sound,kernel),onset_1d(pred,kernel))
+        loss = dtw_jit(onset_1d(target_sound, kernel), onset_1d(pred, kernel))
+        # loss = naive_loss(scat_jax(target_sound),scat_jax(pred))
         # jax.debug.print("onsets:{y},loss:{l}",y=onsets.onset_1d(pred)[0:3],l=loss)
         return loss, pred
 
@@ -380,7 +399,8 @@ def __(
 
 
 @app.cell
-def __(losses, plt, search_params, true_params):
+def __(losses, mo, plt, search_params, true_params):
+    mo.output.clear()
     fig_1, ax1 = plt.subplots()
     ax1.set_xlabel("time (s)")
     ax1.set_ylabel("loss", color="black")
@@ -408,6 +428,8 @@ def __(losses, plt, search_params, true_params):
         # ax2.tick_params(axis="y", labelcolor=color)
 
     fig_1.tight_layout()  # otherwise the right y-label is slightly clipped
+
+
     plt.show()
     return ax1, ax2, c, colors, fig_1, pname2, pvalue
 

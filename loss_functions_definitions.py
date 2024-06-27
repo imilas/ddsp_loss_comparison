@@ -619,13 +619,19 @@ def __(DSP_params, dtw_losses_jax, param_linspace, plt):
 @app.cell
 def __(jax, jnp):
     from helpers.onsets import gaussian_kernel1d
+
+
     def onset_1d(target):
-        stft = jax.scipy.signal.stft(target,boundary='even') # create spectrogram 
-        norm_spec = jnp.abs(stft[2])[0]**0.5 # normalize the spectrogram
-        kernel = gaussian_kernel1d(3,0,10) #create a gaussian kernel (sigma,order,radius)
-        ts = norm_spec.sum(axis=0) # calculate amplitude changes 
-        onsets = jnp.convolve(ts,kernel,mode="same") # smooth amplitude curve 
+        stft = jax.scipy.signal.stft(target, boundary="even")  # create spectrogram
+        norm_spec = jnp.abs(stft[2])[0] ** 0.5  # normalize the spectrogram
+        kernel = gaussian_kernel1d(
+            3, 0, 10
+        )  # create a gaussian kernel (sigma,order,radius)
+        ts = norm_spec.sum(axis=0)  # calculate amplitude changes
+        onsets = jnp.convolve(ts, kernel, mode="same")  # smooth amplitude curve
         return onsets
+
+
     onset_1d
     return gaussian_kernel1d, onset_1d
 
@@ -635,13 +641,17 @@ def __(jax, onset_1d, target):
     # sometimes the instrument creates NAN outputs, which throws everthing off
     def loss(t):
         return onset_1d(t).sum()
+
+
     onset_vg = jax.value_and_grad(loss)
     onset_vg(target)
     return loss, onset_vg
 
 
-@app.cell
+@app.cell(hide_code=True)
 def __():
+    # this doesn't work with grad for some reason
+
     # jax.config.update("jax_debug_nans", False)
     # from helpers.onsets import gaussian_kernel1d
 
@@ -650,24 +660,60 @@ def __():
 
     # @partial(jax.jit,static_argnames=["kernel"])
     # def onset_1d(target,k):
-    #     # stft = jax.scipy.signal.stft(target,boundary='even') # create spectrogram 
+    #     # stft = jax.scipy.signal.stft(target,boundary='even') # create spectrogram
     #     # norm_spec = jnp.abs(stft[2])[0]**0.5 # normalize the spectrogram
-    #     # ts = norm_spec.sum(axis=0) # calculate amplitude changes 
+    #     # ts = norm_spec.sum(axis=0) # calculate amplitude changes
     #     ts = spec_func(target)[0].sum(axis=1)
-    #     onsets = jnp.convolve(ts,k,mode="same") # smooth amplitude curve 
+    #     onsets = jnp.convolve(ts,k,mode="same") # smooth amplitude curve
     #     return onsets
-
 
 
     # def loss_fn_2(params):
     #     pred = instrument.apply(params, noise, SAMPLE_RATE)
-    #     loss = onset_1d(pred,kernel).mean() 
+    #     loss = onset_1d(pred,kernel).mean()
     #     return loss, pred
 
     # grad_fn_2 = jax.value_and_grad(loss_fn_2, has_aux=True)
     # (l, pred), grads = grad_fn_2(instrument_params)
     # l,pred,grads
     return
+
+
+@app.cell
+def __(SAMPLE_RATE, jax, mo, np, plt, target):
+    mo.output.clear()
+    from kymatio.jax import Scattering1D
+
+    J = 8  # higher creates smoother loss but more costly
+    Q = 1
+
+    scat_jax = Scattering1D(J, SAMPLE_RATE, Q)
+    scat_jit = jax.jit(scat_jax)
+
+    meta = scat_jax.meta()
+    order0 = np.where(meta["order"] == 0)
+    order1 = np.where(meta["order"] == 1)
+    order2 = np.where(meta["order"] == 2)
+    log_eps = 1e-6
+
+    target_scatter = scat_jax(target)[0]
+    plt.plot(target_scatter.sum(axis=0))
+    # # target_scatter = target_scatter[1:, :]
+    # target_scatter = torch.log(torch.abs(target_scatter) + log_eps)
+    # target_scatter = torch.mean(target_scatter, dim=-1)
+    return (
+        J,
+        Q,
+        Scattering1D,
+        log_eps,
+        meta,
+        order0,
+        order1,
+        order2,
+        scat_jax,
+        scat_jit,
+        target_scatter,
+    )
 
 
 if __name__ == "__main__":

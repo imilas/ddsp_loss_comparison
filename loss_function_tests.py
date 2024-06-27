@@ -278,6 +278,71 @@ def __():
 
 
 @app.cell
+def __(SAMPLE_RATE, mo, np, plt, target):
+    mo.output.clear()
+    from kymatio.jax import Scattering1D
+
+    J = 4 # higher creates smoother loss but more costly
+    Q = 1
+
+    scat_jax = Scattering1D(J, SAMPLE_RATE, Q)
+    # scat_jit = jax.jit(scat_jax)
+    meta = scat_jax.meta()
+    order0 = np.where(meta["order"] == 0)
+    order1 = np.where(meta["order"] == 1)
+    order2 = np.where(meta["order"] == 2)
+    log_eps = 1e-6
+
+    target_scatter = scat_jax(target)[0]
+    plt.plot(target_scatter.sum(axis=0))
+    # # target_scatter = target_scatter[1:, :]
+    # target_scatter = torch.log(torch.abs(target_scatter) + log_eps)
+    # target_scatter = torch.mean(target_scatter, dim=-1)
+    return (
+        J,
+        Q,
+        Scattering1D,
+        log_eps,
+        meta,
+        order0,
+        order1,
+        order2,
+        scat_jax,
+        target_scatter,
+    )
+
+
+@app.cell
+def __(outputs, scat_jax):
+    outputs_scatter = [scat_jax(x[0]) for x in outputs]
+    # outputs_scatter = [scat_jit(x[0]) for x in outputs[0:10]]
+    return outputs_scatter,
+
+
+@app.cell
+def __(
+    DSP_params,
+    naive_loss,
+    outputs_scatter,
+    param_linspace,
+    plt,
+    target_param,
+    target_scatter,
+):
+    losses_scatter = [naive_loss(x, target_scatter) for x in outputs_scatter]
+    plt.plot(param_linspace, losses_scatter)
+    plt.axvline(
+        DSP_params["params"][target_param],
+        color="#FF000055",
+        linestyle="dashed",
+        label="correct param",
+    )
+    plt.legend()
+    plt.title("wavelet scatter loss")
+    return losses_scatter,
+
+
+@app.cell
 def __():
     # what to do?
     # - 2D loss function might be smoother
