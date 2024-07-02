@@ -1,14 +1,25 @@
 import numpy as np 
 import jax
 import jax.numpy as jnp
+from functools import partial
 
-def onset_1d(target):
-    stft = jax.scipy.signal.stft(target,boundary='even') # create spectrogram 
-    norm_spec = jnp.abs(stft[2])[0]**0.5 # normalize the spectrogram
-    kernel = gaussian_kernel1d(3,0,10) #create a gaussian kernel (sigma,order,radius)
-    ts = norm_spec.sum(axis=0) # calculate amplitude changes 
-    onsets = jnp.convolve(ts,kernel,mode="same") # smooth amplitude curve 
+# def onset_1d(target):
+#     stft = jax.scipy.signal.stft(target,boundary='even') # create spectrogram 
+#     norm_spec = jnp.abs(stft[2])[0]**0.5 # normalize the spectrogram
+#     kernel = gaussian_kernel1d(3,0,10) #create a gaussian kernel (sigma,order,radius)
+#     ts = norm_spec.sum(axis=0) # calculate amplitude changes 
+#     onsets = jnp.convolve(ts,kernel,mode="same") # smooth amplitude curve 
+#     return onsets
+
+@partial(jax.jit, static_argnames=["sf"])
+def onset_1d(target,k,sf):
+    # print(target.shape)
+    ts = sf(target)[0].sum(axis=1)
+    onsets = jnp.convolve(ts, k, mode="same")  # smooth amplitude curve
     return onsets
+
+def hell():
+    print("hello")
 
 def gaussian_kernel1d(sigma, order, radius):
     """

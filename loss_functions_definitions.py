@@ -716,5 +716,10 @@ def __(SAMPLE_RATE, jax, mo, np, plt, target):
     )
 
 
+@app.cell
+def __():
+    return
+
+
 if __name__ == "__main__":
     app.run()

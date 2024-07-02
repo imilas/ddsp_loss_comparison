@@ -7,6 +7,23 @@ app = marimo.App(width="full")
 @app.cell
 def __():
     import marimo as mo
+    return mo,
+
+
+@app.cell
+def __(mo):
+    mo.md(
+        f"""
+    This is a streamlined experiment for testing out loss functions. We manually define a synthesizer program containing _target parameters_ which make a _target sound_\. <br>
+    In the experiments, the target paramaters are changed from their original values. The goal of the search function is to find the target parameters by comparing the output of the synthesizer to the target sound. This comparison is done via the _loss function_\. We analyize the effect of the loss functions on the search process. <br>
+    The main variable of interest is whether or not the process successfully finds the target parameter, but we also care about speed and steps it takes to find the target.
+    """
+    )
+    return
+
+
+@app.cell
+def __():
     import functools
     from functools import partial
     import itertools
@@ -20,7 +37,6 @@ def __():
     from flax.core.frozen_dict import unfreeze
     import optax
 
-
     import numpy as np
     from scipy.io import wavfile
     import librosa
@@ -32,6 +48,7 @@ def __():
     from helpers import faust_to_jax as fj
     from helpers import onsets
     from helpers import softdtw_jax
+    from kymatio.jax import Scattering1D
 
 
     default_device = "cpu"  # or 'gpu'
@@ -39,43 +56,11 @@ def __():
 
     SAMPLE_RATE = 44100
     length_seconds = 1  # how long should samples be
-
-
-    naive_loss = lambda x, y: jnp.abs(x - y).mean()
-    cosine_distance = lambda x, y: np.dot(x, y) / (
-        np.linalg.norm(x) * np.linalg.norm(y)
-    )
-
-    NFFT = 256
-    WIN_LEN = 400
-    HOP_LEN = 160
-    # creates a spectrogram helper
-    window = jnp.hanning(WIN_LEN)
-    spec_func = partial(
-        functional.spectrogram,
-        pad=0,
-        window=window,
-        n_fft=NFFT,
-        hop_length=HOP_LEN,
-        win_length=WIN_LEN,
-        power=2.0,
-        normalized=True,
-        center=True,
-        onesided=True,
-    )
-    def clipped_spec(x):
-        jax_spec = spec_func(x)
-        jax_spec = jnp.clip(jax_spec, a_min=0, a_max=1)
-        return jax_spec
     return (
-        HOP_LEN,
-        NFFT,
         Path,
         SAMPLE_RATE,
-        WIN_LEN,
-        clipped_spec,
+        Scattering1D,
         copy,
-        cosine_distance,
         default_device,
         dm_pix,
         fj,
@@ -86,8 +71,6 @@ def __():
         jnp,
         length_seconds,
         librosa,
-        mo,
-        naive_loss,
         nn,
         np,
         onsets,
@@ -96,63 +79,16 @@ def __():
         partial,
         plt,
         softdtw_jax,
-        spec_func,
         train_state,
         unfreeze,
         wavfile,
-        window,
     )
-
-
-@app.cell
-def __(mo):
-    mo.md(
-        """
-    There are 2 types of parameter search problems, inside search, and outside search. 
-
-    - Inside search is easier: we create a target sound using the synth, then we randomly initialize the synthesizer parameters and search for the target parameters. We know that the synth can create an output that is (at least to our ears), identical to the target sound
-    - Outside search means that the target sound is from a source other than the synthesizer. We don't know how close the synthesizer can get to the target sound. This also means there is a degree of subjectivity to outside search. 
-
-    Here we focus on inside search: 
-
-    Each program has 1 or 2 parameters. Each parameter has a TRUE value which the search attemps to find, and and INIT value that the parameter is initially set to. 
-    We conduct stochastic gradient descent search using various loss functions and plot the change in parameters
-    """
-    )
-    return
 
 
 @app.cell
 def __(SAMPLE_RATE, fj, jax):
     fj.SAMPLE_RATE = SAMPLE_RATE
     key = jax.random.PRNGKey(10)
-
-    # faust_code_target = f"""
-    # import("stdfaust.lib");
-    # cutoff = hslider("freq", 4000, 20., 20000., .01);
-    # process = fi.lowpass(1, cutoff);
-    # """
-
-    # faust_code_instrument = f"""
-    # import("stdfaust.lib");
-    # cutoff = hslider("freq", 10000, 20., 20000., .01);
-    # process = fi.lowpass(1, cutoff);
-    #  """
-
-    # true_params = {"lp_cut": 3000, "hp_cut": 2000}
-    # init_params = {"lp_cut": 10000, "hp_cut": 500}
-    # faust_code_target = f"""
-    # import("stdfaust.lib");
-    # lp_cut = hslider("lp_cut", {true_params["lp_cut"]}, 2000., 20000., .01);
-    # hp_cut = hslider("hp_cut", {true_params["hp_cut"]}, 20., 5000., .01);
-    # process = fi.lowpass(5, lp_cut):fi.highpass(5,hp_cut);
-    # """
-    # faust_code_instrument = f"""
-    # import("stdfaust.lib");
-    # lp_cut = hslider("lp_cut", {init_params["lp_cut"]}, 2000., 20000., .01);
-    # hp_cut = hslider("hp_cut",{true_params["hp_cut"]}, 20., 5000., .01);
-    # process = fi.lowpass(5, lp_cut):fi.highpass(5,hp_cut);
-    #  """
 
     true_params = {"lp_cut": 2000}
     init_params = {"lp_cut": 20000}
@@ -201,6 +137,7 @@ def __(
         maxval=1,
     )
     instrument_params = instrument.init(key, noise, SAMPLE_RATE)
+    print(instrument_params)
     return instrument, instrument_jit, instrument_params, noise
 
 
@@ -222,88 +159,100 @@ def __(
     )[0]
     fj.show_audio(target_sound)
     fj.show_audio(init_sound)
-    print(instrument_params)
     return init_sound, target_sound
-
-
-@app.cell
-def __(fb, functional, partial, plt, spec_func, target_sound):
-    mel_spec_func = partial(functional.apply_melscale, melscale_filterbank=fb)
-    target_spec = spec_func(target_sound)[0]
-    plt.imshow(target_spec)
-    return mel_spec_func, target_spec
-
-
-@app.cell
-def __(init_sound, plt, spec_func):
-    plt.imshow(spec_func(init_sound)[0])
-    return
 
 
 @app.cell
 def __(mo):
     mo.md(
-        """
-    Let's setup an SGD experiment with a customizable loss function. 
-    We try:
-        - Naive loss 
-        - Naive loss with spectrogram
-        - SSIM loss (gets close to correct )
-        - SIMSE loss (Finds correct parameter)
-        - time warping loss
-        - scattering wavelets
+        """Let's define the losses:
     """
     )
     return
 
 
 @app.cell
-def __(jax, softdtw_jax):
-    dtw_jax = softdtw_jax.SoftDTW(gamma=0.8)
-    dtw_jit = jax.jit(dtw_jax)
-    return dtw_jax, dtw_jit
+def __(functional, jnp, np, partial):
+    # distance functions
+    naive_loss = lambda x, y: jnp.abs(x - y).mean()
+    cosine_distance = lambda x, y: np.dot(x, y) / (
+        np.linalg.norm(x) * np.linalg.norm(y)
+    )
+
+    # Spec function
+    NFFT = 512
+    WIN_LEN = 800
+    HOP_LEN = 200
+    # creates a spectrogram helper
+    window = jnp.hanning(WIN_LEN)
+    spec_func = partial(
+        functional.spectrogram,
+        pad=0,
+        window=window,
+        n_fft=NFFT,
+        hop_length=HOP_LEN,
+        win_length=WIN_LEN,
+        power=1,
+        normalized=True,
+        center=True,
+        onesided=True,
+    )
+
+
+    def clipped_spec(x):
+        jax_spec = spec_func(x)
+        jax_spec = jnp.clip(jax_spec, a_min=0, a_max=1)
+        return jax_spec
+    return (
+        HOP_LEN,
+        NFFT,
+        WIN_LEN,
+        clipped_spec,
+        cosine_distance,
+        naive_loss,
+        spec_func,
+        window,
+    )
 
 
 @app.cell
-def __(SAMPLE_RATE, jax, jnp, partial, spec_func):
-    from helpers.onsets import gaussian_kernel1d
-    from kymatio.jax import Scattering1D
+def __(softdtw_jax):
+    dtw_jax = softdtw_jax.SoftDTW(gamma=0.8)
+    return dtw_jax,
 
+
+@app.cell
+def __(SAMPLE_RATE, Scattering1D, jnp, onsets):
     kernel = jnp.array(
-        gaussian_kernel1d(3, 0, 10)
+        onsets.gaussian_kernel1d(3, 0, 10)
     )  # create a gaussian kernel (sigma,order,radius)
-
-
-    @partial(jax.jit, static_argnames=["kernel"])
-    def onset_1d(target, k):
-        # stft = jax.scipy.signal.stft(target,boundary='even') # create spectrogram
-        # norm_spec = jnp.abs(stft[2])[0]**0.5 # normalize the spectrogram
-        # ts = norm_spec.sum(axis=0) # calculate amplitude changes
-        ts = spec_func(target)[0].sum(axis=1)
-        onsets = jnp.convolve(ts, k, mode="same")  # smooth amplitude curve
-        return onsets
-
 
     J = 6  # higher creates smoother loss but more costly
     Q = 1
 
     scat_jax = Scattering1D(J, SAMPLE_RATE, Q)
-    return J, Q, Scattering1D, gaussian_kernel1d, kernel, onset_1d, scat_jax
+    return J, Q, kernel, scat_jax
+
+
+@app.cell
+def __(onsets):
+    onset_1d = onsets.onset_1d
+    return onset_1d,
 
 
 @app.cell
 def __(
     SAMPLE_RATE,
-    clipped_spec,
-    dm_pix,
     init_params,
     instrument,
     instrument_jit,
     instrument_params,
     jax,
+    naive_loss,
     noise,
     np,
     optax,
+    scat_jax,
     target_sound,
     train_state,
     true_params,
@@ -324,10 +273,10 @@ def __(
         # loss = (jnp.abs(pred - target_sound)).mean()
         # loss = naive_loss(spec_func(pred)[0],target_spec)
         # loss = 1/dm_pix.ssim(clipped_spec(target_sound),clipped_spec(pred))
-        loss = dm_pix.simse(clipped_spec(target_sound),clipped_spec(pred))
+        # loss = dm_pix.simse(clipped_spec(target_sound),clipped_spec(pred))
         # loss = dtw_jax(pred,target_sound)
-        # loss = dtw_jit(onset_1d(target_sound, kernel), onset_1d(pred, kernel))
-        # loss = naive_loss(scat_jax(target_sound),scat_jax(pred))
+        # loss = dtw_jax(onset_1d(target_sound,kernel,spec_func), onset_1d(pred,kernel,spec_func))
+        loss = naive_loss(scat_jax(target_sound),scat_jax(pred))
         # jax.debug.print("onsets:{y},loss:{l}",y=onsets.onset_1d(pred)[0:3],l=loss)
         return loss, pred
 
@@ -358,7 +307,8 @@ def __(
                 )[0]
                 search_params[pname].append(parameter_value)
             losses.append(loss)
-            print(n, loss, state.params)
+            # print(n, loss, state.params)
+            print(n,end="\r")
     return (
         audio,
         learning_rate,
@@ -414,85 +364,24 @@ def __(losses, mo, plt, search_params, true_params):
 
 
 @app.cell
-def __(mo, plt, sounds, spec_func):
-    mo.output.clear()
-    plt.imshow(spec_func(sounds[-1])[0])
-    return
+def __():
+    import helpers.dfta_core as dfta_core
+
+    return dfta_core,
 
 
 @app.cell
-def __(fj, mo, sounds, target_sound):
+def __(dfta_core, fj, mo):
     mo.output.clear()
-    fj.show_audio(sounds[-1])
-    fj.show_audio(target_sound)
-    return
-
-
-@app.cell
-def __(mo):
-    mo.md(
-        """We see that the spectrum loss fails at finding the parameter because we did't use the same instance of noise when creating our target sound vs when we were searching for the filter parameters. Below we should that two different noises fed through the filter will look different in our spectrum loss function even though they sound the same"""
-    )
-    return
-
-
-@app.cell
-def __(
-    SAMPLE_RATE,
-    clipped_spec,
-    dm_pix,
-    fj,
-    instrument,
-    instrument_jit,
-    instrument_params,
-    jax,
-    length_seconds,
-    mo,
-    naive_loss,
-    spec_func,
-):
-    mo.output.clear()
-    # instrument_jit(instrument_params, noise, SAMPLE_RATE)[0]
-    noise_1 = jax.random.uniform(
-        jax.random.PRNGKey(10),
-        [instrument.getNumInputs(), SAMPLE_RATE * length_seconds],
-        minval=-1,
-        maxval=1,
-    )
-    noise_2 = jax.random.uniform(
-        jax.random.PRNGKey(3),
-        noise_1.shape,
-        minval=-1,
-        maxval=1,
-    )
-    processed_noise_1 = instrument_jit(instrument_params, noise_1, SAMPLE_RATE)[0]
-    processed_noise_2 = instrument_jit(instrument_params, noise_2, SAMPLE_RATE)[0]
-
-
-    print(
-        " spec loss value:",
-        naive_loss(spec_func(processed_noise_1), spec_func(processed_noise_2)),
-    )
-
-    print(
-        "ssim loss value:",
-        1
-        / dm_pix.ssim(
-            clipped_spec(processed_noise_1), clipped_spec(processed_noise_2)
-        ),
-    )
-
-
-    fj.show_audio(processed_noise_1)
-    fj.show_audio(processed_noise_2)
-    return noise_1, noise_2, processed_noise_1, processed_noise_2
+    import torch
+    theta = [torch.tensor(200), torch.tensor(1.), torch.tensor(1.8)]
+    signal = dfta_core.generate_am_chirp(theta, bw=5, duration=1, sr=44100, delta=100)
+    fj.show_audio(signal)
+    return signal, theta, torch
 
 
 @app.cell
 def __():
-    # todo
-    # test wavelets
-    # organize code
     return
 
 
