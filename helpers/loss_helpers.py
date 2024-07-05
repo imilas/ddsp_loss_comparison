@@ -2,6 +2,7 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 from functools import partial
+from audax.core import functional
 
 # def onset_1d(target):
 #     stft = jax.scipy.signal.stft(target,boundary='even') # create spectrogram 
@@ -17,9 +18,6 @@ def onset_1d(target,k,sf):
     ts = sf(target)[0].sum(axis=1)
     onsets = jnp.convolve(ts, k, mode="same")  # smooth amplitude curve
     return onsets
-
-def hell():
-    print("hello")
 
 def gaussian_kernel1d(sigma, order, radius):
     """
@@ -51,3 +49,21 @@ def gaussian_kernel1d(sigma, order, radius):
             q = Q_deriv.dot(q)
         q = (x[:, None] ** exponent_range).dot(q)
         return q * phi_x
+
+def spec_func(nfft,win_len,hop_len):
+    # creates a spectrogram helper
+    window = jnp.hanning(win_len)
+    spec_func = partial(
+        functional.spectrogram,
+        pad=0,
+        window=window,
+        n_fft=nfft,
+        hop_length=hop_len,
+        win_length=win_len,
+        power=1,
+        normalized=True,
+        center=True,
+        onesided=True,
+    )
+
+    return spec_func

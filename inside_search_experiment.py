@@ -41,12 +41,13 @@ def __():
     from scipy.io import wavfile
     import librosa
     import matplotlib.pyplot as plt
-    from audax.core import functional
+
+    # from audax.core import functional
     import copy
     import dm_pix
 
     from helpers import faust_to_jax as fj
-    from helpers import onsets
+    from helpers import loss_helpers
     from helpers import softdtw_jax
     from kymatio.jax import Scattering1D
 
@@ -64,16 +65,15 @@ def __():
         default_device,
         dm_pix,
         fj,
-        functional,
         functools,
         itertools,
         jax,
         jnp,
         length_seconds,
         librosa,
+        loss_helpers,
         nn,
         np,
-        onsets,
         optax,
         os,
         partial,
@@ -86,7 +86,63 @@ def __():
 
 
 @app.cell
-def __(SAMPLE_RATE, fj, jax):
+def __(mo):
+    mo.md(
+        """Let's define the losses
+    """
+    )
+    return
+
+
+@app.cell
+def __(SAMPLE_RATE, Scattering1D, jnp, loss_helpers, np, softdtw_jax):
+    # distance functions
+    naive_loss = lambda x, y: jnp.abs(x - y).mean()
+    cosine_distance = lambda x, y: np.dot(x, y) / (
+        np.linalg.norm(x) * np.linalg.norm(y)
+    )
+
+    # Spec function
+    NFFT = 512
+    WIN_LEN = 800
+    HOP_LEN = 200
+    spec_func = loss_helpers.spec_func(NFFT, WIN_LEN, HOP_LEN)
+
+
+    def clip_spec(x):
+        return jnp.clip(x, a_min=0, a_max=1)
+
+
+    dtw_jax = softdtw_jax.SoftDTW(gamma=0.8)
+
+    kernel = jnp.array(
+        loss_helpers.gaussian_kernel1d(3, 0, 10)
+    )  # create a gaussian kernel (sigma,order,radius)
+
+    J = 6  # higher creates smoother loss but more costly
+    Q = 1
+    scat_jax = Scattering1D(J, SAMPLE_RATE, Q)
+
+    onset_1d = loss_helpers.onset_1d
+    return (
+        HOP_LEN,
+        J,
+        NFFT,
+        Q,
+        WIN_LEN,
+        clip_spec,
+        cosine_distance,
+        dtw_jax,
+        kernel,
+        naive_loss,
+        onset_1d,
+        scat_jax,
+        spec_func,
+    )
+
+
+@app.cell
+def __(SAMPLE_RATE, fj, jax, length_seconds, mo, partial):
     fj.SAMPLE_RATE = SAMPLE_RATE
     key = jax.random.PRNGKey(10)
 
@@ -106,25 +162,7 @@ def __(SAMPLE_RATE, fj, jax):
     FX = fi.lowpass(5,cutoff);
     process = os.osc(os.osc(3))*1000,_:["lp_cut":+(_,_)->FX];
     """
-    return (
-        faust_code_instrument,
-        faust_code_target,
-        init_params,
-        key,
-        true_params,
-    )
 
-
-@app.cell
-def __(
-    SAMPLE_RATE,
-    faust_code_instrument,
-    fj,
-    jax,
-    key,
-    length_seconds,
-    partial,
-):
     instrument = fj.faust2jax(faust_code_instrument)
     instrument = instrument(SAMPLE_RATE)
     instrument_jit = jax.jit(
@@ -138,121 +176,47 @@ def __(
     )
     instrument_params = instrument.init(key, noise, SAMPLE_RATE)
     print(instrument_params)
-    return instrument, instrument_jit, instrument_params, noise
-
-
-@app.cell
-def __(
-    SAMPLE_RATE,
-    faust_code_target,
-    fj,
-    instrument_jit,
-    instrument_params,
-    jax,
-    mo,
-    noise,
-):
     mo.output.clear()
     init_sound = instrument_jit(instrument_params, noise, SAMPLE_RATE)[0]
     target_sound = fj.process_noise_in_faust(
         faust_code_target, jax.random.PRNGKey(10)
     )[0]
+    return (
+        faust_code_instrument,
+        faust_code_target,
+        init_params,
+        init_sound,
+        instrument,
+        instrument_jit,
+        instrument_params,
+        key,
+        noise,
+        target_sound,
+        true_params,
+    )
+
+
+@app.cell
+def __(fj, init_sound, target_sound):
     fj.show_audio(target_sound)
     fj.show_audio(init_sound)
-    return init_sound, target_sound
-
-
-@app.cell
-def __(mo):
-    mo.md(
-        """Let's define the losses:
-    """
-    )
     return
-
-
-@app.cell
-def __(functional, jnp, np, partial):
-    # distance functions
-    naive_loss = lambda x, y: jnp.abs(x - y).mean()
-    cosine_distance = lambda x, y: np.dot(x, y) / (
-        np.linalg.norm(x) * np.linalg.norm(y)
-    )
-
-    # Spec function
-    NFFT = 512
-    WIN_LEN = 800
-    HOP_LEN = 200
-    # creates a spectrogram helper
-    window = jnp.hanning(WIN_LEN)
-    spec_func = partial(
-        functional.spectrogram,
-        pad=0,
-        window=window,
-        n_fft=NFFT,
-        hop_length=HOP_LEN,
-        win_length=WIN_LEN,
-        power=1,
-        normalized=True,
-        center=True,
-        onesided=True,
-    )
-
-
-    def clipped_spec(x):
-        jax_spec = spec_func(x)
-        jax_spec = jnp.clip(jax_spec, a_min=0, a_max=1)
-        return jax_spec
-    return (
-        HOP_LEN,
-        NFFT,
-        WIN_LEN,
-        clipped_spec,
-        cosine_distance,
-        naive_loss,
-        spec_func,
-        window,
-    )
-
-
-@app.cell
-def __(softdtw_jax):
-    dtw_jax = softdtw_jax.SoftDTW(gamma=0.8)
-    return dtw_jax,
-
-
-@app.cell
-def __(SAMPLE_RATE, Scattering1D, jnp, onsets):
-    kernel = jnp.array(
-        onsets.gaussian_kernel1d(3, 0, 10)
-    )  # create a gaussian kernel (sigma,order,radius)
-
-    J = 6  # higher creates smoother loss but more costly
-    Q = 1
-
-    scat_jax = Scattering1D(J, SAMPLE_RATE, Q)
-    return J, Q, kernel, scat_jax
-
-
-@app.cell
-def __(onsets):
-    onset_1d = onsets.onset_1d
-    return onset_1d,
 
 
 @app.cell
 def __(
     SAMPLE_RATE,
+    clip_spec,
+    dm_pix,
     init_params,
     instrument,
     instrument_jit,
     instrument_params,
     jax,
-    naive_loss,
     noise,
     np,
     optax,
-    scat_jax,
+    spec_func,
     target_sound,
     train_state,
     true_params,
@@ -274,10 +238,13 @@ def __(
         # loss = naive_loss(spec_func(pred)[0],target_spec)
         # loss = 1/dm_pix.ssim(clipped_spec(target_sound),clipped_spec(pred))
         # loss = dm_pix.simse(clipped_spec(target_sound),clipped_spec(pred))
+        loss = dm_pix.simse(
+            clip_spec(spec_func(target_sound)), clip_spec(spec_func(pred))
+        )
         # loss = dtw_jax(pred,target_sound)
         # loss = dtw_jax(onset_1d(target_sound,kernel,spec_func), onset_1d(pred,kernel,spec_func))
-        loss = naive_loss(scat_jax(target_sound),scat_jax(pred))
-        # jax.debug.print("onsets:{y},loss:{l}",y=onsets.onset_1d(pred)[0:3],l=loss)
+        # loss = naive_loss(scat_jax(target_sound),scat_jax(pred))
+        # jax.debug.print("loss_helpers:{y},loss:{l}",y=loss_helpers.onset_1d(pred)[0:3],l=loss)
         return loss, pred
 
 
@@ -300,7 +267,6 @@ def __(
         if n % 1 == 0:
             audio, mod_vars = instrument_jit(state.params, noise, SAMPLE_RATE)
             sounds.append(audio)
-
             for pname in search_params.keys():
                 parameter_value = np.array(
                     mod_vars["intermediates"]["dawdreamer/%s" % pname]
@@ -308,7 +274,7 @@ def __(
                 search_params[pname].append(parameter_value)
             losses.append(loss)
             # print(n, loss, state.params)
-            print(n,end="\r")
+            print(n, end="\r")
     return (
         audio,
         learning_rate,
@@ -364,24 +330,99 @@ def __(losses, mo, plt, search_params, true_params):
 
 
 @app.cell
-def __():
-    import helpers.dfta_core as dfta_core
-
-    return dfta_core,
-
-
-@app.cell
-def __(dfta_core, fj, mo):
-    mo.output.clear()
-    import torch
-    theta = [torch.tensor(200), torch.tensor(1.), torch.tensor(1.8)]
-    signal = dfta_core.generate_am_chirp(theta, bw=5, duration=1, sr=44100, delta=100)
-    fj.show_audio(signal)
-    return signal, theta, torch
+def __(mo):
+    mo.md(
+        """quiver plots
+    1. Define grad function using loss
+    2. draw quivers
+    """
+    )
+    return
 
 
 @app.cell
+def __(
+    SAMPLE_RATE,
+    clip_spec,
+    dm_pix,
+    instrument,
+    jax,
+    noise,
+    spec_func,
+    state,
+    target_sound,
+):
+    # loss fn shows the difference between the output of synth and a target_sound
+    def loss_fn2(params):
+        pred = instrument.apply(params, noise, SAMPLE_RATE)
+        # loss = (jnp.abs(pred - target_sound)).mean()
+        # loss = naive_loss(spec_func(pred)[0],spec_func(target_sound)[0])
+
+        loss = dm_pix.simse(
+            clip_spec(spec_func(target_sound)), clip_spec(spec_func(pred))
+        )
+        return loss, pred
+
+
+    grad_fn = jax.value_and_grad(loss_fn2, has_aux=True)
+
+    (l, pred), grads = grad_fn(state.params)
+    return grad_fn, grads, l, loss_fn2, pred
+
+
+@app.cell(hide_code=True)
 def __():
+    # def fill_template(template, pkey, fill_values):
+    #     template = template.copy()
+    #     """template is the model parameter, pkey is the parameter we want to change, and fill_value is the value we assign to the parameter
+    #     """
+    #     for i, k in enumerate(pkey):
+    #         template["params"][k] = fill_values[i]
+    #     return template
+
+
+    # target_param = "_dawdreamer/freq"
+    # param_linspace = jnp.array(jnp.linspace(-0.99, 1.0, 300, endpoint=False))
+    # programs = [
+    #     fill_template(copy.deepcopy(instrument_params), [target_param], [x])
+    #     for x in param_linspace
+
+    # ]
+    # programs
+    return
+
+
+@app.cell
+def __(copy, instrument_params, jnp, true_params):
+    # make array of programs
+    granularity = 10
+    programs = [
+        copy.deepcopy(instrument_params)
+        for i in range(granularity ^ len(true_params))
+    ]
+    for k in instrument_params["params"].keys():
+        vs = jnp.linspace(-1, 1, granularity, endpoint=False)
+        for i, v in enumerate(vs):
+            programs[i]["params"][k] = v
+    return granularity, i, k, programs, v, vs
+
+
+@app.cell
+def __(grad_fn, programs):
+    grad_fn(programs[0])
+    return
+
+
+@app.cell
+def __():
+    # use pandas!
+    return
+
+
+@app.cell
+def __():
+    # p = instrument.apply(instrument_params, noise, SAMPLE_RATE)
+    # l = naive_loss(spec_func(p)[0],target_spec)
     return
 
 

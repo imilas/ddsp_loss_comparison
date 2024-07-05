@@ -492,12 +492,15 @@ def __(
     plt.plot(param_linspace, dtw_losses)
     plt.axvline(
         DSP_params["params"]["_dawdreamer/osc_f"],
-        color="#FF000055",
+        color="#AA0000",
         linestyle="dashed",
         label="correct param",
     )
     plt.legend()
-    plt.title("dtw loss using onsets")
+    plt.xlabel('Parameter', fontsize=18)
+    plt.ylabel('Loss/Distance', fontsize=18)
+
+    plt.title('Dynamic Time Warp',fontsize=18)
     return dtw_loss, dtw_losses
 
 
