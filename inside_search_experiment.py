@@ -408,14 +408,35 @@ def __(copy, instrument_params, jnp, true_params):
 
 
 @app.cell
-def __(grad_fn, programs):
-    grad_fn(programs[0])
+def __(programs):
+    programs[0]
+    return
+
+
+@app.cell
+def __(np):
+    import pandas as pd
+
+    x = np.linspace(-1, 1, 3)
+    y = np.linspace(0, 1, 2)
+    z = np.linspace(0, 1, 2)
+    (
+        xx,
+        yy,
+    ) = np.meshgrid(x, y, z)
+    xx, yy
+    return pd, x, xx, y, yy, z
+
+
+@app.cell
+def __(np, xx, yy, zz):
+    np.stack([xx.flatten(), yy.flatten(), zz.flatten()], axis=-1)
     return
 
 
 @app.cell
 def __():
-    # use pandas!
+    # make programs using pandas
     return
 
 
