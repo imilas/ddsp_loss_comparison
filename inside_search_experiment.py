@@ -146,22 +146,51 @@ def __(SAMPLE_RATE, fj, jax, length_seconds, mo, partial):
     fj.SAMPLE_RATE = SAMPLE_RATE
     key = jax.random.PRNGKey(10)
 
-    true_params = {"lp_cut": 2000}
-    init_params = {"lp_cut": 20000}
+    # true_params = {"lp_cut": 2000,"lp_cut_osc_f":3}
+    # init_params = {"lp_cut": 20000,"lp_cut_osc_f":0}
 
+    # faust_code_target = f"""
+    # import("stdfaust.lib");
+    # cutoff = hslider("lp_cut",{true_params["lp_cut"]},101,20000,1);
+    # osc_f = hslider("lp_cut_osc_f",{true_params["lp_cut_osc_f"]},0,30,0.5);
+    # FX = fi.lowpass(5,cutoff);
+    # process = os.osc(os.osc(osc_f))*1000 + cutoff,_:["lp_cut":(!,_)->FX];
+    # """
+
+    # faust_code_instrument = f"""
+    # import("stdfaust.lib");
+    # cutoff = hslider("lp_cut",{init_params["lp_cut"]},101,20000,1);
+    # osc_f = hslider("lp_cut_osc_f",{init_params["lp_cut_osc_f"]},0,30,0.5);
+    # FX = fi.lowpass(5,cutoff);
+    # process = os.osc(os.osc(osc_f))*1000 + cutoff,_:["lp_cut":(!,_)->FX];
+
+    true_params = {"osc_f": 4, "lp_cut": 500}
     faust_code_target = f"""
     import("stdfaust.lib");
-    cutoff = hslider("lp_cut",{true_params["lp_cut"]},101,20000,1);
-    FX = fi.lowpass(5,cutoff);
-    process = os.osc(os.osc(3))*1000,_:["lp_cut":+(_,_)->FX];
+    sineOsc = phasor : sin
+    with {{
+        decimalPart(x) = x-int(x);
+        phasor(f) = f/ma.SR : (+ : decimalPart) ~ _;
+    }};
+    lp_cut = hslider("lp_cut",{true_params["lp_cut"]},1,1000,0.5);
+    osc_f = hslider("osc_f",{true_params["osc_f"]},1,100,0.5);
+    FX = fi.lowpass(10,lp_cut);
+    process = no.noise:(sineOsc(osc_f)+2)*lp_cut,_:["lp_cut":(!,_)->FX];
     """
-
+    init_params = {"osc_f": 1, "lp_cut": 200}
     faust_code_instrument = f"""
     import("stdfaust.lib");
-    cutoff = hslider("lp_cut",{init_params["lp_cut"]},101,20000,1);
-    FX = fi.lowpass(5,cutoff);
-    process = os.osc(os.osc(3))*1000,_:["lp_cut":+(_,_)->FX];
+    sineOsc = phasor : sin
+    with {{
+        decimalPart(x) = x-int(x);
+        phasor(f) = f/ma.SR : (+ : decimalPart) ~ _;
+    }};
+    lp_cut = hslider("lp_cut",{init_params["lp_cut"]},1,1000,0.5);
+    osc_f = hslider("osc_f",{init_params["osc_f"]},1,100,0.5);
+    FX = fi.lowpass(10,lp_cut);
+    process = no.noise:(sineOsc(osc_f)+2)*lp_cut,_:["lp_cut":(!,_)->FX];
     """
+
 
     instrument = fj.faust2jax(faust_code_instrument)
     instrument = instrument(SAMPLE_RATE)
@@ -197,7 +226,14 @@ def __(SAMPLE_RATE, fj, jax, length_seconds, mo, partial):
 
 
 @app.cell
-def __(fj, init_sound, target_sound):
+def __(instrument_params):
+    instrument_params
+    return
+
+
+@app.cell
+def __(fj, init_sound, mo, target_sound):
+    mo.output.clear()
     fj.show_audio(target_sound)
     fj.show_audio(init_sound)
     return
@@ -206,22 +242,21 @@ def __(fj, init_sound, target_sound):
 @app.cell
 def __(
     SAMPLE_RATE,
-    clip_spec,
-    dm_pix,
     init_params,
     instrument,
     instrument_jit,
     instrument_params,
     jax,
+    naive_loss,
     noise,
     np,
     optax,
-    spec_func,
+    scat_jax,
     target_sound,
     train_state,
     true_params,
 ):
-    learning_rate = 0.05
+    learning_rate = 0.001
     # Create Train state
     tx = optax.adam(learning_rate)
     state = train_state.TrainState.create(
@@ -233,17 +268,13 @@ def __(
     def loss_fn(params):
         pred = instrument.apply(params, noise, SAMPLE_RATE)
         # L1 time-domain loss
-        loss = 0
         # loss = (jnp.abs(pred - target_sound)).mean()
-        # loss = naive_loss(spec_func(pred)[0],target_spec)
-        # loss = 1/dm_pix.ssim(clipped_spec(target_sound),clipped_spec(pred))
-        # loss = dm_pix.simse(clipped_spec(target_sound),clipped_spec(pred))
-        loss = dm_pix.simse(
-            clip_spec(spec_func(target_sound)), clip_spec(spec_func(pred))
-        )
+        # loss = naive_loss(spec_func(pred)[0],spec_func(target_sound))
+        # loss = 1/dm_pix.ssim(clip_spec(spec_func(target_sound)),clip_spec(spec_func(pred)))
+        # loss = dm_pix.simse(clip_spec(spec_func(target_sound)),clip_spec(spec_func(pred)))
         # loss = dtw_jax(pred,target_sound)
         # loss = dtw_jax(onset_1d(target_sound,kernel,spec_func), onset_1d(pred,kernel,spec_func))
-        # loss = naive_loss(scat_jax(target_sound),scat_jax(pred))
+        loss = naive_loss(scat_jax(target_sound), scat_jax(pred))
         # jax.debug.print("loss_helpers:{y},loss:{l}",y=loss_helpers.onset_1d(pred)[0:3],l=loss)
         return loss, pred
 
@@ -262,7 +293,7 @@ def __(
     search_params = {
         k: [init_params[k]] for k in true_params.keys()
     }  # will record parameters while searching
-    for n in range(200):
+    for n in range(500):
         state, loss = train_step(state)
         if n % 1 == 0:
             audio, mod_vars = instrument_jit(state.params, noise, SAMPLE_RATE)
@@ -294,39 +325,33 @@ def __(
 
 
 @app.cell
-def __(losses, mo, plt, search_params, true_params):
-    mo.output.clear()
-    fig_1, ax1 = plt.subplots()
-    ax1.set_xlabel("time (s)")
-    ax1.set_ylabel("loss", color="black")
-    ax1.plot(losses, color="black")
-    # ax1.set_yscale("log")
-    ax1.tick_params(axis="y", labelcolor="black")
-
-    ax2 = ax1.twinx()  # instantiate a second Axes that shares the same x-axis
+def __(losses, plt, search_params, true_params):
+    fig1, axs = plt.subplots(1, len(search_params) + 1, figsize=(12, 3))
+    axs[0].set_xlabel("time (s)")
+    axs[0].set_ylabel("loss", color="black")
+    axs[0].plot(losses, color="black")
 
     c = 0
     colors = ["red", "green", "blue", "purple"]
     for pname2, pvalue in search_params.items():
-        ax2.set_ylabel(
-            pname2, color=colors[c]
-        )  # we already handled the x-label with ax1
-        ax2.plot(search_params[pname2], color=colors[c])
-        plt.axhline(
+        ax = axs[c + 1]
+        ax.set_ylabel(pname2)  # we already handled the x-label with ax1
+        ax.plot(search_params[pname2], color=colors[c])
+        ax.axhline(
             true_params[pname2], linestyle="dashed", color=colors[c], label="true"
         )
-        ax2.tick_params(axis="y")
-
+        ax.tick_params(axis="y")
         c += 1
-        # color = "tab:green"
-        # ax2.plot(search_params["lp_cut"], color=color)
-        # ax2.tick_params(axis="y", labelcolor=color)
-
-    fig_1.tight_layout()  # otherwise the right y-label is slightly clipped
+    fig1.tight_layout()  # otherwise the right y-label is slightly clipped
+    fig1
+    return ax, axs, c, colors, fig1, pname2, pvalue
 
 
-    plt.show()
-    return ax1, ax2, c, colors, fig_1, pname2, pvalue
+@app.cell
+def __(fj, mo, sounds):
+    mo.output.clear()
+    fj.show_audio(sounds[-1])
+    return
 
 
 @app.cell
@@ -370,6 +395,12 @@ def __(
     return grad_fn, grads, l, loss_fn2, pred
 
 
+@app.cell
+def __(grads):
+    grads
+    return
+
+
 @app.cell(hide_code=True)
 def __():
     # def fill_template(template, pkey, fill_values):
@@ -408,29 +439,44 @@ def __(copy, instrument_params, jnp, true_params):
 
 
 @app.cell
-def __(programs):
-    programs[0]
-    return
-
-
-@app.cell
 def __(np):
     import pandas as pd
 
     x = np.linspace(-1, 1, 3)
     y = np.linspace(0, 1, 2)
     z = np.linspace(0, 1, 2)
-    (
-        xx,
-        yy,
-    ) = np.meshgrid(x, y, z)
-    xx, yy
-    return pd, x, xx, y, yy, z
+    xx, yy, zz = np.meshgrid(x, y, z)
+    np.stack([xx.flatten(), yy.flatten(), zz.flatten()], axis=-1)
+    return pd, x, xx, y, yy, z, zz
 
 
 @app.cell
-def __(np, xx, yy, zz):
-    np.stack([xx.flatten(), yy.flatten(), zz.flatten()], axis=-1)
+def __(np, pd, true_params):
+    def make_programs_df(true_params, granularity=10):
+        # make programs that cover the grid, given the parameters dict
+        meshgrid = np.meshgrid(
+            *[
+                np.linspace(-1, 1, granularity, endpoint=False)
+                for i in range(len(true_params.keys()))
+            ]
+        )
+        program_params = np.stack([d.flatten() for d in meshgrid], axis=-1)
+        programs_df = pd.DataFrame(program_params, columns=true_params.keys())
+        return programs_df
+
+
+    programs_df = make_programs_df(true_params)
+    return make_programs_df, programs_df
+
+
+@app.cell
+def __(instrument_params):
+    instrument_params
+    return
+
+
+@app.cell
+def __():
     return
 
 

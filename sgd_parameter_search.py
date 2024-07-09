@@ -30,7 +30,7 @@ def __():
     import dm_pix
 
     from helpers import faust_to_jax as fj
-    from helpers import onsets
+    from helpers import loss_helpers
     from helpers import softdtw_jax
 
 
@@ -86,11 +86,11 @@ def __():
         jnp,
         length_seconds,
         librosa,
+        loss_helpers,
         mo,
         naive_loss,
         nn,
         np,
-        onsets,
         optax,
         os,
         partial,
@@ -154,21 +154,25 @@ def __(SAMPLE_RATE, fj, jax):
     # process = fi.lowpass(5, lp_cut):fi.highpass(5,hp_cut);
     #  """
 
-    true_params = {"lp_cut": 2000}
-    init_params = {"lp_cut": 20000}
+    true_params = {"lp_cut": 2000,"osc_f":2,"hp_cut": 2000}
+    init_params = {"lp_cut": 9000,"osc_f":100,"hp_cut": 500}
 
     faust_code_target = f"""
     import("stdfaust.lib");
     cutoff = hslider("lp_cut",{true_params["lp_cut"]},101,20000,1);
+    osc_f = hslider("osc_f",{true_params["osc_f"]},1,1000,1);
+    hp_cut = hslider("hp_cut",{true_params["hp_cut"]}, 20., 5000., .01);
     FX = fi.lowpass(5,cutoff);
-    process = os.osc(os.osc(3))*1000,_:["lp_cut":+(_,_)->FX];
+    process = os.osc(osc_f)*1000+cutoff,_:["lp_cut":(!,_)->FX]:fi.highpass(5,hp_cut);
     """
 
     faust_code_instrument = f"""
     import("stdfaust.lib");
     cutoff = hslider("lp_cut",{init_params["lp_cut"]},101,20000,1);
+    osc_f = hslider("osc_f",{init_params["osc_f"]},1,1000,1);
+    hp_cut = hslider("hp_cut",{init_params["hp_cut"]}, 20., 5000., .01);
     FX = fi.lowpass(5,cutoff);
-    process = os.osc(os.osc(3))*1000,_:["lp_cut":+(_,_)->FX];
+    process = os.osc(osc_f)*1000+cutoff,_:["lp_cut":(!,_)->FX]:fi.highpass(5,hp_cut);
     """
     return (
         faust_code_instrument,
@@ -227,11 +231,10 @@ def __(
 
 
 @app.cell
-def __(fb, functional, partial, plt, spec_func, target_sound):
-    mel_spec_func = partial(functional.apply_melscale, melscale_filterbank=fb)
+def __(plt, spec_func, target_sound):
     target_spec = spec_func(target_sound)[0]
     plt.imshow(target_spec)
-    return mel_spec_func, target_spec
+    return target_spec,
 
 
 @app.cell
@@ -265,12 +268,11 @@ def __(jax, softdtw_jax):
 
 
 @app.cell
-def __(SAMPLE_RATE, jax, jnp, partial, spec_func):
-    from helpers.onsets import gaussian_kernel1d
+def __(SAMPLE_RATE, jax, jnp, loss_helpers, partial, spec_func):
     from kymatio.jax import Scattering1D
 
     kernel = jnp.array(
-        gaussian_kernel1d(3, 0, 10)
+        loss_helpers.gaussian_kernel1d(3, 0, 10)
     )  # create a gaussian kernel (sigma,order,radius)
 
 
@@ -288,19 +290,18 @@ def __(SAMPLE_RATE, jax, jnp, partial, spec_func):
     Q = 1
 
     scat_jax = Scattering1D(J, SAMPLE_RATE, Q)
-    return J, Q, Scattering1D, gaussian_kernel1d, kernel, onset_1d, scat_jax
+    return J, Q, Scattering1D, kernel, onset_1d, scat_jax
 
 
 @app.cell
 def __(
     SAMPLE_RATE,
-    clipped_spec,
-    dm_pix,
     init_params,
     instrument,
     instrument_jit,
     instrument_params,
     jax,
+    jnp,
     noise,
     np,
     optax,
@@ -321,10 +322,10 @@ def __(
         pred = instrument.apply(params, noise, SAMPLE_RATE)
         # L1 time-domain loss
         loss = 0
-        # loss = (jnp.abs(pred - target_sound)).mean()
+        loss = (jnp.abs(pred - target_sound)).mean()
         # loss = naive_loss(spec_func(pred)[0],target_spec)
         # loss = 1/dm_pix.ssim(clipped_spec(target_sound),clipped_spec(pred))
-        loss = dm_pix.simse(clipped_spec(target_sound),clipped_spec(pred))
+        # loss = dm_pix.simse(clipped_spec(target_sound),clipped_spec(pred))
         # loss = dtw_jax(pred,target_sound)
         # loss = dtw_jit(onset_1d(target_sound, kernel), onset_1d(pred, kernel))
         # loss = naive_loss(scat_jax(target_sound),scat_jax(pred))
