@@ -142,121 +142,83 @@ def __(SAMPLE_RATE, Scattering1D, jnp, loss_helpers, np, softdtw_jax):
 
 
 @app.cell
-def __(SAMPLE_RATE, fj, jax, length_seconds, mo, partial):
+def __(SAMPLE_RATE, fj, jax):
     fj.SAMPLE_RATE = SAMPLE_RATE
     key = jax.random.PRNGKey(10)
 
-    # true_params = {"lp_cut": 2000,"lp_cut_osc_f":3}
-    # init_params = {"lp_cut": 20000,"lp_cut_osc_f":0}
+    true_params = {"lp_cut": 500,"hp_cut":60}
+    init_params = {"lp_cut": 100,"hp_cut":20}
 
-    # faust_code_target = f"""
-    # import("stdfaust.lib");
-    # cutoff = hslider("lp_cut",{true_params["lp_cut"]},101,20000,1);
-    # osc_f = hslider("lp_cut_osc_f",{true_params["lp_cut_osc_f"]},0,30,0.5);
-    # FX = fi.lowpass(5,cutoff);
-    # process = os.osc(os.osc(osc_f))*1000 + cutoff,_:["lp_cut":(!,_)->FX];
-    # """
-
-    # faust_code_instrument = f"""
-    # import("stdfaust.lib");
-    # cutoff = hslider("lp_cut",{init_params["lp_cut"]},101,20000,1);
-    # osc_f = hslider("lp_cut_osc_f",{init_params["lp_cut_osc_f"]},0,30,0.5);
-    # FX = fi.lowpass(5,cutoff);
-    # process = os.osc(os.osc(osc_f))*1000 + cutoff,_:["lp_cut":(!,_)->FX];
-
-    true_params = {"osc_f": 4, "lp_cut": 500}
-    faust_code_target = f"""
+    program = """
     import("stdfaust.lib");
-    sineOsc = phasor : sin
-    with {{
-        decimalPart(x) = x-int(x);
-        phasor(f) = f/ma.SR : (+ : decimalPart) ~ _;
-    }};
-    lp_cut = hslider("lp_cut",{true_params["lp_cut"]},1,1000,0.5);
-    osc_f = hslider("osc_f",{true_params["osc_f"]},1,100,0.5);
-    FX = fi.lowpass(10,lp_cut);
-    process = no.noise:(sineOsc(osc_f)+2)*lp_cut,_:["lp_cut":(!,_)->FX];
-    """
-    init_params = {"osc_f": 1, "lp_cut": 200}
-    faust_code_instrument = f"""
-    import("stdfaust.lib");
-    sineOsc = phasor : sin
-    with {{
-        decimalPart(x) = x-int(x);
-        phasor(f) = f/ma.SR : (+ : decimalPart) ~ _;
-    }};
-    lp_cut = hslider("lp_cut",{init_params["lp_cut"]},1,1000,0.5);
-    osc_f = hslider("osc_f",{init_params["osc_f"]},1,100,0.5);
-    FX = fi.lowpass(10,lp_cut);
-    process = no.noise:(sineOsc(osc_f)+2)*lp_cut,_:["lp_cut":(!,_)->FX];
+    lp_cut = hslider("lp_cut",{lp_cut},99,1000,1);
+    hp_cut = hslider("hp_cut",{hp_cut},1,120,1);
+    process = no.noise:fi.lowpass(3,lp_cut):fi.highpass(10,hp_cut);
     """
 
+    true_code = program.format(**true_params)
+    instrument_code = program.format(**init_params)
 
-    instrument = fj.faust2jax(faust_code_instrument)
-    instrument = instrument(SAMPLE_RATE)
-    instrument_jit = jax.jit(
-        partial(instrument.apply, mutable="intermediates"), static_argnums=[2]
-    )
-    noise = jax.random.uniform(
-        jax.random.PRNGKey(10),
-        [instrument.getNumInputs(), SAMPLE_RATE * length_seconds],
-        minval=-1,
-        maxval=1,
-    )
-    instrument_params = instrument.init(key, noise, SAMPLE_RATE)
+    true_instrument, true_instrument_jit, true_noise, true_instrument_params = fj.code_to_flax(true_code,key)
+    instrument, instrument_jit, noise, instrument_params = fj.code_to_flax(instrument_code,key)
     print(instrument_params)
-    mo.output.clear()
-    init_sound = instrument_jit(instrument_params, noise, SAMPLE_RATE)[0]
-    target_sound = fj.process_noise_in_faust(
-        faust_code_target, jax.random.PRNGKey(10)
-    )[0]
     return (
-        faust_code_instrument,
-        faust_code_target,
         init_params,
-        init_sound,
         instrument,
+        instrument_code,
         instrument_jit,
         instrument_params,
         key,
         noise,
-        target_sound,
+        program,
+        true_code,
+        true_instrument,
+        true_instrument_jit,
+        true_instrument_params,
+        true_noise,
         true_params,
     )
 
 
 @app.cell
-def __(instrument_params):
-    instrument_params
-    return
-
-
-@app.cell
-def __(fj, init_sound, mo, target_sound):
+def __(
+    SAMPLE_RATE,
+    fj,
+    instrument_jit,
+    instrument_params,
+    mo,
+    noise,
+    true_instrument_params,
+    true_noise,
+):
     mo.output.clear()
-    fj.show_audio(target_sound)
+    init_sound = instrument_jit(instrument_params, noise, SAMPLE_RATE)[0]
+    target_sound = instrument_jit(true_instrument_params, true_noise, SAMPLE_RATE)[0]
     fj.show_audio(init_sound)
-    return
+    fj.show_audio(target_sound)
+    return init_sound, target_sound
 
 
 @app.cell
 def __(
     SAMPLE_RATE,
+    dtw_jax,
     init_params,
     instrument,
     instrument_jit,
     instrument_params,
     jax,
-    naive_loss,
+    kernel,
     noise,
     np,
+    onset_1d,
     optax,
-    scat_jax,
+    spec_func,
     target_sound,
     train_state,
     true_params,
 ):
-    learning_rate = 0.001
+    learning_rate = 0.05
     # Create Train state
     tx = optax.adam(learning_rate)
     state = train_state.TrainState.create(
@@ -266,15 +228,15 @@ def __(
 
     # loss fn shows the difference between the output of synth and a target_sound
     def loss_fn(params):
-        pred = instrument.apply(params, noise, SAMPLE_RATE)
+        pred = instrument_jit(params, noise, SAMPLE_RATE)[0]
         # L1 time-domain loss
         # loss = (jnp.abs(pred - target_sound)).mean()
         # loss = naive_loss(spec_func(pred)[0],spec_func(target_sound))
         # loss = 1/dm_pix.ssim(clip_spec(spec_func(target_sound)),clip_spec(spec_func(pred)))
         # loss = dm_pix.simse(clip_spec(spec_func(target_sound)),clip_spec(spec_func(pred)))
         # loss = dtw_jax(pred,target_sound)
-        # loss = dtw_jax(onset_1d(target_sound,kernel,spec_func), onset_1d(pred,kernel,spec_func))
-        loss = naive_loss(scat_jax(target_sound), scat_jax(pred))
+        loss = dtw_jax(onset_1d(target_sound, kernel, spec_func),onset_1d(pred, kernel, spec_func),)
+        # loss = naive_loss(scat_jax(target_sound), scat_jax(pred))
         # jax.debug.print("loss_helpers:{y},loss:{l}",y=loss_helpers.onset_1d(pred)[0:3],l=loss)
         return loss, pred
 
@@ -293,7 +255,7 @@ def __(
     search_params = {
         k: [init_params[k]] for k in true_params.keys()
     }  # will record parameters while searching
-    for n in range(500):
+    for n in range(1000):
         state, loss = train_step(state)
         if n % 1 == 0:
             audio, mod_vars = instrument_jit(state.params, noise, SAMPLE_RATE)
@@ -348,13 +310,6 @@ def __(losses, plt, search_params, true_params):
 
 
 @app.cell
-def __(fj, mo, sounds):
-    mo.output.clear()
-    fj.show_audio(sounds[-1])
-    return
-
-
-@app.cell
 def __(mo):
     mo.md(
         """quiver plots
@@ -366,130 +321,55 @@ def __(mo):
 
 
 @app.cell
-def __(
-    SAMPLE_RATE,
-    clip_spec,
-    dm_pix,
-    instrument,
-    jax,
-    noise,
-    spec_func,
-    state,
-    target_sound,
-):
-    # loss fn shows the difference between the output of synth and a target_sound
-    def loss_fn2(params):
-        pred = instrument.apply(params, noise, SAMPLE_RATE)
-        # loss = (jnp.abs(pred - target_sound)).mean()
-        # loss = naive_loss(spec_func(pred)[0],spec_func(target_sound)[0])
-
-        loss = dm_pix.simse(
-            clip_spec(spec_func(target_sound)), clip_spec(spec_func(pred))
-        )
-        return loss, pred
-
-
-    grad_fn = jax.value_and_grad(loss_fn2, has_aux=True)
-
+def __(jax, loss_fn, state):
+    grad_fn = jax.jit(jax.value_and_grad(loss_fn, has_aux=True))
     (l, pred), grads = grad_fn(state.params)
-    return grad_fn, grads, l, loss_fn2, pred
-
-
-@app.cell
-def __(grads):
-    grads
-    return
-
-
-@app.cell(hide_code=True)
-def __():
-    # def fill_template(template, pkey, fill_values):
-    #     template = template.copy()
-    #     """template is the model parameter, pkey is the parameter we want to change, and fill_value is the value we assign to the parameter
-    #     """
-    #     for i, k in enumerate(pkey):
-    #         template["params"][k] = fill_values[i]
-    #     return template
-
-
-    # target_param = "_dawdreamer/freq"
-    # param_linspace = jnp.array(jnp.linspace(-0.99, 1.0, 300, endpoint=False))
-    # programs = [
-    #     fill_template(copy.deepcopy(instrument_params), [target_param], [x])
-    #     for x in param_linspace
-
-    # ]
-    # programs
-    return
-
-
-@app.cell
-def __(copy, instrument_params, jnp, true_params):
-    # make array of programs
-    granularity = 10
-    programs = [
-        copy.deepcopy(instrument_params)
-        for i in range(granularity ^ len(true_params))
-    ]
-    for k in instrument_params["params"].keys():
-        vs = jnp.linspace(-1, 1, granularity, endpoint=False)
-        for i, v in enumerate(vs):
-            programs[i]["params"][k] = v
-    return granularity, i, k, programs, v, vs
-
-
-@app.cell
-def __(np):
-    import pandas as pd
-
-    x = np.linspace(-1, 1, 3)
-    y = np.linspace(0, 1, 2)
-    z = np.linspace(0, 1, 2)
-    xx, yy, zz = np.meshgrid(x, y, z)
-    np.stack([xx.flatten(), yy.flatten(), zz.flatten()], axis=-1)
-    return pd, x, xx, y, yy, z, zz
-
-
-@app.cell
-def __(np, pd, true_params):
-    def make_programs_df(true_params, granularity=10):
-        # make programs that cover the grid, given the parameters dict
-        meshgrid = np.meshgrid(
-            *[
-                np.linspace(-1, 1, granularity, endpoint=False)
-                for i in range(len(true_params.keys()))
-            ]
-        )
-        program_params = np.stack([d.flatten() for d in meshgrid], axis=-1)
-        programs_df = pd.DataFrame(program_params, columns=true_params.keys())
-        return programs_df
-
-
-    programs_df = make_programs_df(true_params)
-    return make_programs_df, programs_df
-
-
-@app.cell
-def __(instrument_params):
-    instrument_params
-    return
+    return grad_fn, grads, l, pred
 
 
 @app.cell
 def __():
+    # import pandas as pd
+    # def make_programs_df(true_params, granularity=10):
+    #     # make programs that cover the grid, given the parameters dict
+    #     meshgrid = np.meshgrid(
+    #         *[
+    #             np.linspace(-0.98,0.99, granularity, endpoint=False)
+    #             for i in range(len(true_params.keys()))
+    #         ]
+    #     )
+    #     program_params = np.stack([d.flatten() for d in meshgrid], axis=-1)
+    #     programs_df = pd.DataFrame(program_params, columns=true_params.keys())
+    #     return programs_df
+
+
+    # programs_df = make_programs_df(instrument_params["params"])
     return
 
 
 @app.cell
-def __():
-    # make programs using pandas
+def __(grad_fn, programs_df):
+    grad_loss_dict = [grad_fn({"params":programs_df.loc[i].to_dict()}) for i in range(len(programs_df))]
+    return grad_loss_dict,
+
+
+@app.cell
+def __(grad_loss_dict, np, plt, programs_df, true_instrument_params):
+    grad_dir = np.array([list(x[1]["params"].values()) for x in grad_loss_dict])
+    plt.quiver(*programs_df.T.to_numpy(),*grad_dir.T)
+    plt.scatter(*true_instrument_params["params"].values())
+    return grad_dir,
+
+
+@app.cell
+def __(true_instrument_params):
+    true_instrument_params["params"]
     return
 
 
 @app.cell
-def __():
-    # p = instrument.apply(instrument_params, noise, SAMPLE_RATE)
-    # l = naive_loss(spec_func(p)[0],target_spec)
+def __(grad_dir):
+    grad_dir.shape
     return
 
 

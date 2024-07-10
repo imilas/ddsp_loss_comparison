@@ -47,8 +47,6 @@ def show_audio(data, autoplay=False):
 
 def faust2jax(faust_code: str,module_name="MyDsp"):
     """
-    Convert faust code into a batched JAX model and a single-item inference function.
-
     Inputs:
     * faust_code: string of faust code.
     """
@@ -78,4 +76,22 @@ def process_noise_in_faust(faust_code, key,length_seconds=1):
     lp_params = lp.init(subkey, noise, SAMPLE_RATE)
     return lp.apply(lp_params, noise, SAMPLE_RATE), subkey
 
-
+def code_to_flax(synth_code,key,length_seconds=1):
+    """
+    Inputs: faust code
+    Outputs: jax instrument, jitted instrument, instrument input (still needed if empty), and instrument flax params
+    
+    """
+    DSP = faust2jax(synth_code)
+    instrument = DSP(SAMPLE_RATE)  # init model
+    noise = jax.random.uniform(
+        key,
+        [instrument.getNumInputs(), SAMPLE_RATE * length_seconds],
+        minval=-1,
+        maxval=1,
+    )
+    instrument_params = instrument.init(key, noise, SAMPLE_RATE)
+    instrument_jit = jax.jit(
+        partial(instrument.apply, mutable="intermediates"), static_argnums=[2]
+    )
+    return instrument, instrument_jit, noise, instrument_params
