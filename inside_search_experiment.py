@@ -146,12 +146,12 @@ def __(SAMPLE_RATE, fj, jax):
     fj.SAMPLE_RATE = SAMPLE_RATE
     key = jax.random.PRNGKey(10)
 
-    true_params = {"lp_cut": 500,"hp_cut":60}
-    init_params = {"lp_cut": 100,"hp_cut":20}
+    true_params = {"lp_cut": 900, "hp_cut": 100}
+    init_params = {"lp_cut": 100, "hp_cut": 20}
 
     program = """
     import("stdfaust.lib");
-    lp_cut = hslider("lp_cut",{lp_cut},99,1000,1);
+    lp_cut = hslider("lp_cut",{lp_cut},50,1000,1);
     hp_cut = hslider("hp_cut",{hp_cut},1,120,1);
     process = no.noise:fi.lowpass(3,lp_cut):fi.highpass(10,hp_cut);
     """
@@ -159,8 +159,12 @@ def __(SAMPLE_RATE, fj, jax):
     true_code = program.format(**true_params)
     instrument_code = program.format(**init_params)
 
-    true_instrument, true_instrument_jit, true_noise, true_instrument_params = fj.code_to_flax(true_code,key)
-    instrument, instrument_jit, noise, instrument_params = fj.code_to_flax(instrument_code,key)
+    true_instrument, true_instrument_jit, true_noise, true_instrument_params = (
+        fj.code_to_flax(true_code, key)
+    )
+    instrument, instrument_jit, noise, instrument_params = fj.code_to_flax(
+        instrument_code, key
+    )
     print(instrument_params)
     return (
         init_params,
@@ -193,7 +197,9 @@ def __(
 ):
     mo.output.clear()
     init_sound = instrument_jit(instrument_params, noise, SAMPLE_RATE)[0]
-    target_sound = instrument_jit(true_instrument_params, true_noise, SAMPLE_RATE)[0]
+    target_sound = instrument_jit(true_instrument_params, true_noise, SAMPLE_RATE)[
+        0
+    ]
     fj.show_audio(init_sound)
     fj.show_audio(target_sound)
     return init_sound, target_sound
@@ -202,25 +208,23 @@ def __(
 @app.cell
 def __(
     SAMPLE_RATE,
-    dtw_jax,
     init_params,
     instrument,
     instrument_jit,
     instrument_params,
     jax,
-    kernel,
+    naive_loss,
     noise,
     np,
-    onset_1d,
     optax,
-    spec_func,
+    scat_jax,
     target_sound,
     train_state,
     true_params,
 ):
-    learning_rate = 0.05
+    learning_rate = 0.03
     # Create Train state
-    tx = optax.adam(learning_rate)
+    tx = optax.adabelief(learning_rate)
     state = train_state.TrainState.create(
         apply_fn=instrument.apply, params=instrument_params, tx=tx
     )
@@ -235,16 +239,18 @@ def __(
         # loss = 1/dm_pix.ssim(clip_spec(spec_func(target_sound)),clip_spec(spec_func(pred)))
         # loss = dm_pix.simse(clip_spec(spec_func(target_sound)),clip_spec(spec_func(pred)))
         # loss = dtw_jax(pred,target_sound)
-        loss = dtw_jax(onset_1d(target_sound, kernel, spec_func),onset_1d(pred, kernel, spec_func),)
-        # loss = naive_loss(scat_jax(target_sound), scat_jax(pred))
+        # loss = dtw_jax(onset_1d(target_sound, kernel, spec_func),onset_1d(pred, kernel, spec_func))
+        loss = naive_loss(scat_jax(target_sound), scat_jax(pred))
         # jax.debug.print("loss_helpers:{y},loss:{l}",y=loss_helpers.onset_1d(pred)[0:3],l=loss)
         return loss, pred
+
+    grad_fn = jax.jit(jax.value_and_grad(loss_fn, has_aux=True))
 
 
     @jax.jit
     def train_step(state):
         """Train for a single step."""
-        grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
+        # grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
         (loss, pred), grads = grad_fn(state.params)
         state = state.apply_gradients(grads=grads)
         return state, loss
@@ -255,7 +261,7 @@ def __(
     search_params = {
         k: [init_params[k]] for k in true_params.keys()
     }  # will record parameters while searching
-    for n in range(1000):
+    for n in range(120):
         state, loss = train_step(state)
         if n % 1 == 0:
             audio, mod_vars = instrument_jit(state.params, noise, SAMPLE_RATE)
@@ -270,6 +276,7 @@ def __(
             print(n, end="\r")
     return (
         audio,
+        grad_fn,
         learning_rate,
         loss,
         loss_fn,
@@ -287,7 +294,8 @@ def __(
 
 
 @app.cell
-def __(losses, plt, search_params, true_params):
+def __(losses, mo, plt, search_params, true_params):
+    mo.output.clear()
     fig1, axs = plt.subplots(1, len(search_params) + 1, figsize=(12, 3))
     axs[0].set_xlabel("time (s)")
     axs[0].set_ylabel("loss", color="black")
@@ -321,55 +329,75 @@ def __(mo):
 
 
 @app.cell
-def __(jax, loss_fn, state):
-    grad_fn = jax.jit(jax.value_and_grad(loss_fn, has_aux=True))
-    (l, pred), grads = grad_fn(state.params)
-    return grad_fn, grads, l, pred
+def __(instrument_params, np):
+    import pandas as pd
+    def make_programs_df(true_params, granularity):
+        # make programs that cover the grid, given the parameters dict
+        meshgrid = np.meshgrid(
+            *[
+                np.linspace(-0.95,1, granularity, endpoint=False)
+                for i in range(len(true_params.keys()))
+            ]
+        )
+        program_params = np.stack([d.flatten() for d in meshgrid], axis=-1)
+        programs_df = pd.DataFrame(program_params, columns=true_params.keys())
+        return programs_df
 
-
-@app.cell
-def __():
-    # import pandas as pd
-    # def make_programs_df(true_params, granularity=10):
-    #     # make programs that cover the grid, given the parameters dict
-    #     meshgrid = np.meshgrid(
-    #         *[
-    #             np.linspace(-0.98,0.99, granularity, endpoint=False)
-    #             for i in range(len(true_params.keys()))
-    #         ]
-    #     )
-    #     program_params = np.stack([d.flatten() for d in meshgrid], axis=-1)
-    #     programs_df = pd.DataFrame(program_params, columns=true_params.keys())
-    #     return programs_df
-
-
-    # programs_df = make_programs_df(instrument_params["params"])
-    return
+    granularity=14
+    programs_df = make_programs_df(instrument_params["params"],granularity)
+    return granularity, make_programs_df, pd, programs_df
 
 
 @app.cell
 def __(grad_fn, programs_df):
-    grad_loss_dict = [grad_fn({"params":programs_df.loc[i].to_dict()}) for i in range(len(programs_df))]
+    grad_loss_dict = [
+        grad_fn({"params": programs_df.loc[i].to_dict()})
+        for i in range(len(programs_df))
+    ]
     return grad_loss_dict,
 
 
 @app.cell
-def __(grad_loss_dict, np, plt, programs_df, true_instrument_params):
+def __(
+    grad_loss_dict,
+    granularity,
+    np,
+    plt,
+    programs_df,
+    true_instrument_params,
+):
+
+    plt.figure(figsize=(6, 6))
+    data = np.array([x[0][0] for x in grad_loss_dict]).reshape(granularity,granularity)
+
+    plt.imshow(data, cmap='coolwarm', extent=(-1, 1, -1, 1), origin='lower')
+
     grad_dir = np.array([list(x[1]["params"].values()) for x in grad_loss_dict])
-    plt.quiver(*programs_df.T.to_numpy(),*grad_dir.T)
+    plt.quiver(*programs_df.T.to_numpy(), *-grad_dir.T)
     plt.scatter(*true_instrument_params["params"].values())
-    return grad_dir,
+    plt.xlabel(programs_df.columns[0])
+    plt.ylabel(programs_df.columns[1])
+
+    return data, grad_dir
 
 
 @app.cell
-def __(true_instrument_params):
-    true_instrument_params["params"]
+def __(grad_loss_dict, np):
+    np.array(list(grad_loss_dict[0][1]["params"].values()))
     return
 
 
 @app.cell
-def __(grad_dir):
-    grad_dir.shape
+def __():
+    return
+
+
+@app.cell
+def __():
+    # ideas:
+    # make a grad surface and calculate how useful a loss is with how many points it can reach the goal based on a learning rate
+    # multi-objective loss function
+    # 
     return
 
 
