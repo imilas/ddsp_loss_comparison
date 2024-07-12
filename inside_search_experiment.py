@@ -379,6 +379,7 @@ def __(grad_loss_dict, np):
 @app.cell
 def __():
     # ideas:
+    # show path traveled on quiver plots
     # make a grad surface and calculate how useful a loss is with how many points it can reach the goal based on a learning rate
     # multi-objective loss function
     #
