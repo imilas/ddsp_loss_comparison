@@ -432,7 +432,7 @@ def __(fj, mo, sounds, target_sound):
 @app.cell
 def __(mo):
     mo.md(
-        """We see that the spectrum loss fails at finding the parameter because we did't use the same instance of noise when creating our target sound vs when we were searching for the filter parameters. Below we should that two different noises fed through the filter will look different in our spectrum loss function even though they sound the same"""
+        """We see that the spectrum loss fails at finding the parameter because we did't use the same instance of noise when creating our target sound vs when we were searching for the filter parameters. Below we show that two different noises fed through the filter will look different in our spectrum loss function even though they sound the same"""
     )
     return
 

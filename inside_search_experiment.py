@@ -38,6 +38,8 @@ def __():
     import optax
 
     import numpy as np
+    import pandas as pd
+
     from scipy.io import wavfile
     import librosa
     import matplotlib.pyplot as plt
@@ -77,6 +79,7 @@ def __():
         optax,
         os,
         partial,
+        pd,
         plt,
         softdtw_jax,
         train_state,
@@ -141,15 +144,16 @@ def __(SAMPLE_RATE, Scattering1D, jnp, loss_helpers, np, softdtw_jax):
 def __(SAMPLE_RATE, fj, jax):
     fj.SAMPLE_RATE = SAMPLE_RATE
     key = jax.random.PRNGKey(10)
-    true_params = {"amp":0.5,"carrier": 500}
-    init_params = {"amp":0.9,"carrier": 300}
+
+
+    true_params = {"amp": 4,"carrier":70}
+    init_params = {"amp": 2.5,"carrier":60}
 
     program = """
     import("stdfaust.lib");
-    carrier = hslider("carrier",{carrier},20,1000,1);
-    amp = hslider("amp",{amp},0,5,0.01);
+    carrier = hslider("carrier",{carrier},20,300,0.1);
+    amp = hslider("amp",{amp},0,10,0.1);
     sineOsc(f) = +(f/ma.SR) ~ ma.frac:*(2*ma.PI) : sin;
-    sawOsc(f) = +(f/ma.SR) ~ ma.frac;
     process = sineOsc(amp)*sineOsc(carrier);
     """
 
@@ -200,22 +204,24 @@ def __(
 @app.cell
 def __(
     SAMPLE_RATE,
+    dtw_jax,
     init_params,
     instrument,
     instrument_jit,
     instrument_params,
     jax,
     jnp,
-    naive_loss,
+    kernel,
     noise,
     np,
+    onset_1d,
     optax,
-    scat_jax,
+    spec_func,
     target_sound,
     train_state,
     true_params,
 ):
-    learning_rate = 0.08
+    learning_rate = 0.03
     # Create Train state
     tx = optax.adam(learning_rate)
     state = train_state.TrainState.create(
@@ -232,8 +238,8 @@ def __(
         # loss = 1/dm_pix.ssim(clip_spec(spec_func(target_sound)),clip_spec(spec_func(pred)))
         # loss = dm_pix.simse(clip_spec(spec_func(target_sound)),clip_spec(spec_func(pred)))
         # loss = dtw_jax(pred,target_sound)
-        # loss = dtw_jax(onset_1d(target_sound, kernel, spec_func),onset_1d(pred, kernel, spec_func))
-        loss = naive_loss(scat_jax(target_sound), scat_jax(pred))
+        loss = dtw_jax(onset_1d(target_sound, kernel, spec_func),onset_1d(pred, kernel, spec_func))
+        # loss = naive_loss(scat_jax(target_sound), scat_jax(pred))
         # jax.debug.print("loss_helpers:{y},loss:{l}",y=loss_helpers.onset_1d(pred)[0:3],l=loss)
         return loss, pred
 
@@ -262,7 +268,7 @@ def __(
     real_params = {k: [init_params[k]] for k in true_params.keys()}  # will record parameters while searching
     norm_params = {k: [] for k in true_params.keys()}  # will record parameters while searching
 
-    for n in range(80):
+    for n in range(150):
         state, loss = train_step(state)
         if n % 1 == 0:
             audio, mod_vars = instrument_jit(state.params, noise, SAMPLE_RATE)
@@ -331,8 +337,7 @@ def __(mo):
 
 
 @app.cell
-def __(instrument_params, np):
-    import pandas as pd
+def __(instrument_params, np, pd):
 
 
     def make_programs_df(true_params, granularity):
@@ -343,9 +348,9 @@ def __(instrument_params, np):
         return programs_df
 
 
-    granularity = 7
+    granularity = 8
     programs_df = make_programs_df(instrument_params["params"], granularity)
-    return granularity, make_programs_df, pd, programs_df
+    return granularity, make_programs_df, programs_df
 
 
 @app.cell
@@ -373,6 +378,7 @@ def __(
     plt.imshow(data, cmap="coolwarm", extent=(-1, 1, -1, 1), origin="lower")
 
     grad_dir = np.array([list(x[1]["params"].values()) for x in grad_loss_dict])
+    grad_dir = np.where(grad_dir>0,1,-1)
     plt.quiver(*programs_df.T.to_numpy(), *-grad_dir.T)
     plt.scatter(*true_instrument_params["params"].values(), color="#00FF00", marker="*", s=[150])
     plt.scatter(*instrument_params["params"].values(), color="#00FF00", marker="o", s=[150])
@@ -388,15 +394,26 @@ def __(
 
 @app.cell
 def __():
+    return
+
+
+@app.cell
+def __():
+    return
+
+
+@app.cell
+def __():
     # ideas:
     # show path traveled on quiver plots
     # fix dtw_loss
     # fix multi-level spec loss
     # try the modulated sine cut-off program in original code
-    # 
     # make a grad surface and calculate how useful a loss is with how many points it can reach the goal based on a learning rate
     # multi-objective loss function
     #
+    # have to define your loss functions 
+    # have to define your programs (maybe before your loss functions so you can show landscapes)
     return
 
 
