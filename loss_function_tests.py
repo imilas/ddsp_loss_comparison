@@ -1,7 +1,7 @@
 import marimo
 
 __generated_with = "0.5.2"
-app = marimo.App()
+app = marimo.App(width="full")
 
 
 @app.cell
@@ -352,6 +352,36 @@ def __():
     # - out of synth situations:
     # - this can be different synth or organic
     # - compare dtw and scattering transforms
+    return
+
+
+@app.cell
+def __():
+    # NFFTs = [256,512,2048,4096] 
+
+    # def return_mel_spec(NFFT):
+    #     WIN_LEN = 400
+    #     HOP_LEN = 20
+    #     window = jnp.hanning(WIN_LEN)
+    #     spec_func = partial(functional.spectrogram, pad=0, window=window, n_fft=NFFT,
+    #                        hop_length=HOP_LEN, win_length=WIN_LEN, power=1,
+    #                        normalized=False, center=False, onesided=True)
+    #     fb = functional.melscale_fbanks(n_freqs=(NFFT//2)+1, n_mels=64,
+    #                              sample_rate=SAMPLE_RATE, f_min=60., f_max=SAMPLE_RATE//2)
+    #     mel_spec_func = partial(functional.apply_melscale, melscale_filterbank=fb)
+
+    #     jax_spec = jax.jit(spec_func)
+    #     mel_spec = jax.jit(mel_spec_func) 
+    #     return mel_spec,jax_spec 
+
+    # spec_funs = [return_mel_spec(x) for x in NFFTs]
+    # spectrogram = spec_funs [-1][0](spec_funs[-1][1]((target)))
+    # librosa.display.specshow(spectrogram[-1].T)
+    return
+
+
+@app.cell
+def __():
     return
 
 

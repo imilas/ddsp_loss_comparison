@@ -102,6 +102,11 @@ def __(attack_time, decay_time, release_time, sustain_level, sustain_time):
 
 
 @app.cell
+def __():
+    return
+
+
+@app.cell
 def __(
     attack_time,
     decay_time,
@@ -131,7 +136,38 @@ def __(
 def __(adsr_envelope, adsr_shifts, dtw_jit, np, plt):
     dtw_loss_adsr = [dtw_jit(adsr_envelope,np.roll(adsr_envelope,x)) for x in adsr_shifts]
     plt.plot(adsr_shifts,dtw_loss_adsr)
+    plt.xlabel("Shift Steps")
+    plt.ylabel("Distance")
+    plt.tight_layout()
+    plt.show()
     return dtw_loss_adsr,
+
+
+@app.cell
+def __(dtw_jit, idx, len_signal, np, plt):
+    dtw_loss_cos= [dtw_jit(np.cos(idx),np.cos(np.linspace(0,3.14*x,num=len_signal))) for x in np.linspace(0,35,141,endpoint=True)]
+    plt.plot(np.linspace(0,35,141,endpoint=True),dtw_loss_cos,label="Distance")
+    plt.axvline(
+        2,
+        color="#FF0000",
+        linestyle="-",
+        label="Correct Frequency",
+    )
+    for i in range(8):
+        f = (i+2)*2
+        plt.axvline(
+        f,
+        color =  (1, 0, 0,.7-i/10),
+        linestyle=":",)
+
+
+    plt.xticks(range(0, 30 + 1, 2 ))  
+    plt.legend()
+    plt.xlabel("Cosine Frequency")
+    plt.ylabel("Distance")
+    plt.tight_layout()
+    plt.show()
+    return dtw_loss_cos, f, i
 
 
 @app.cell
@@ -141,10 +177,11 @@ def __(mo):
 
 
 @app.cell
-def __(generate_adsr, plt, sample_rate):
+def __(adsr_envelope, generate_adsr, plt, sample_rate):
     import dtw 
-    adsr_envelope_1 = generate_adsr(0.1, 0.1, 0.5, 0.8, 0.4, sample_rate)
-    adsr_envelope_2 = generate_adsr(0.2, 0.1, 1, 0.3, 0.4, sample_rate)
+    # adsr_envelope_1 = generate_adsr(0.25, 0.1, 1, 0.35, 0.4, sample_rate)
+    adsr_envelope_1 = adsr_envelope
+    adsr_envelope_2 = generate_adsr(0.1, 0.3, 1, 0.3, 0.4, sample_rate)
     plt.plot(adsr_envelope_1)
     plt.plot(adsr_envelope_2)
     return adsr_envelope_1, adsr_envelope_2, dtw
@@ -159,11 +196,87 @@ def __(adsr_envelope_1, adsr_envelope_2, dtw):
 
 
 @app.cell
-def __(adsr_envelope_1, adsr_envelope_2, dtw):
-    ## Align and plot with the Rabiner-Juang type VI-c unsmoothed recursion
-    dtw.dtw(adsr_envelope_1,adsr_envelope_2, keep_internals=True, 
-        step_pattern=dtw.rabinerJuangStepPattern(6, "c"))\
-        .plot(type="twoway",offset=-2)
+def __(dtw, plt):
+    def draw_alignments(s1,s2):
+        ## Align and plot with the Rabiner-Juang type VI-c unsmoothed recursion
+        ax = dtw.dtw(s1,s2, keep_internals=True)\
+            .plot(type="twoway",offset=1)
+        ax2 = ax.get_shared_x_axes().get_siblings(ax)[1]
+        ax2.set_ylabel('Reference Value', color='b')  # This sets the label for the second y-axis
+        
+        # plt.title("ADSR Alignment")
+        plt.tight_layout()
+        return plt
+    return draw_alignments,
+
+
+@app.cell
+def __(adsr_envelope_1, draw_alignments, np):
+    p1 = draw_alignments(adsr_envelope_1,np.roll(adsr_envelope_1,1))
+    p1.show()
+    return p1,
+
+
+@app.cell
+def __(draw_alignments, idx, np, template):
+    p2 = draw_alignments(template,np.cos(idx))
+    p2.show()
+    return p2,
+
+
+@app.cell
+def __(np, plt):
+
+    import librosa
+    import librosa.display
+
+    # Define the sample rate and time vector
+    fs = 2048  # Sample rate (Hz)
+    t = np.linspace(0, 2, 2 * fs, endpoint=False)  # Time vector for 2 seconds
+    # Generate the signal
+    signal = np.concatenate([
+        np.sin(2 * np.pi * 15 * t[:fs]),  # 4 Hz for the first second
+        np.sin(2 * np.pi * 60 * t[fs:])+0.1*np.sin(2 * np.pi * 300 * t[fs:]),
+    ])
+
+    # Plot Time Domain
+    plt.figure(figsize=(6, 8))
+
+    plt.subplot(3, 1, 1)
+    plt.plot(t, signal)
+    plt.title('Time Domain')
+    plt.xlabel('Time [s]')
+    plt.ylabel('Amplitude')
+
+    # Plot Frequency Domain
+    plt.subplot(3, 1, 2)
+    plt.psd(signal, NFFT=fs, Fs=fs)
+    plt.title('Frequency Domain')
+    plt.xlabel('Frequency [Hz]')
+    plt.ylabel('Power/Frequency [dB/Hz]')
+
+    # Compute and Plot Mel Spectrogram
+    plt.subplot(3, 1, 3)
+    # Compute the mel spectrogram
+    S = librosa.feature.melspectrogram(y=signal, sr=fs, n_mels=512, fmax=fs//2,hop_length=32,win_length=256*2, fmin=0)
+    # Convert to dB scale
+    S_dB = librosa.power_to_db(S,ref=np.max)
+
+    # Plot Mel Spectrogram
+    librosa.display.specshow(S_dB, sr=fs, x_axis='time', y_axis='mel',hop_length=512,fmax=256)
+    plt.title('Spectrogram')
+    # plt.colorbar(format='%+2.0f dB')
+    plt.xlabel('Time [s]')
+    plt.ylabel('Frequency [Hz]')
+
+    plt.tight_layout()
+    plt.show()
+
+    return S, S_dB, fs, librosa, signal, t
+
+
+@app.cell
+def __():
     return
 
 
