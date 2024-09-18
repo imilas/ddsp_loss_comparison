@@ -89,12 +89,25 @@ def __():
 
 
 @app.cell
-def __(mo):
-    mo.md(
-        """Let's define the losses
-    """
-    )
-    return
+def __():
+    import argparse
+    # Parse known and unknown arguments
+    # Create the parser
+    parser = argparse.ArgumentParser(description='Process a loss function name.')
+
+    # Add a string argument
+    parser.add_argument('--loss_fn', type=str, help='the name of the loss function. One of:  L1_Spec , DTW_Onset, SIMSE_Spec, JTFS',default="L1_Spec")
+    parser.add_argument('--program_number', type=int, help='program number',default=1)
+    args, unknown = parser.parse_known_args()
+
+    # Parse the arguments
+    # args = parser.parse_args()
+
+
+    # Use the argument
+    print(f'Loss function: {args.loss_fn}')
+
+    return argparse, args, parser, unknown
 
 
 @app.cell
@@ -141,22 +154,33 @@ def __(SAMPLE_RATE, Scattering1D, jnp, loss_helpers, np, softdtw_jax):
 
 
 @app.cell
-def __(SAMPLE_RATE, fj, jax):
+def __(args):
+    import json
+    def load_programs(json_file):
+        with open(json_file, 'r') as file:
+            data = json.load(file)
+        return data
+
+    # L1_Spec , DTW_Onset, SIMSE_Spec, JTFS
+    experiment = {
+        "program_id": args.program_number,
+        "loss": args.loss_fn,
+        "lr": 0.02
+    }
+    experiment["program_and_params"] = load_programs("./programs_and_params.json")["programs"][str(experiment["program_id"])]
+    print(experiment)
+    return experiment, json, load_programs
+
+
+@app.cell
+def __(SAMPLE_RATE, experiment, fj, jax):
     fj.SAMPLE_RATE = SAMPLE_RATE
     key = jax.random.PRNGKey(10)
 
+    true_params = experiment["program_and_params"]["true_params"]
+    init_params = experiment["program_and_params"]["init_params"]
 
-    true_params = {"amp": 4,"carrier":70}
-    init_params = {"amp": 2.5,"carrier":60}
-
-    program = """
-    import("stdfaust.lib");
-    carrier = hslider("carrier",{carrier},20,300,0.1);
-    amp = hslider("amp",{amp},0,10,0.1);
-    sineOsc(f) = +(f/ma.SR) ~ ma.frac:*(2*ma.PI) : sin;
-    process = sineOsc(amp)*sineOsc(carrier);
-    """
-
+    program = experiment["program_and_params"]["program"]
 
     true_code = program.format(**true_params)
     instrument_code = program.format(**init_params)
@@ -204,7 +228,10 @@ def __(
 @app.cell
 def __(
     SAMPLE_RATE,
+    clip_spec,
+    dm_pix,
     dtw_jax,
+    experiment,
     init_params,
     instrument,
     instrument_jit,
@@ -212,35 +239,40 @@ def __(
     jax,
     jnp,
     kernel,
+    naive_loss,
     noise,
     np,
     onset_1d,
     optax,
+    scat_jax,
     spec_func,
     target_sound,
     train_state,
     true_params,
 ):
-    learning_rate = 0.03
+    learning_rate = experiment["lr"]
     # Create Train state
-    tx = optax.adam(learning_rate)
+    tx = optax.rmsprop(learning_rate)
     state = train_state.TrainState.create(
         apply_fn=instrument.apply, params=instrument_params, tx=tx
     )
-
+    lfn = experiment["loss"]
 
     # loss fn shows the difference between the output of synth and a target_sound
     def loss_fn(params):
         pred = instrument_jit(params, noise, SAMPLE_RATE)[0]
-        # L1 time-domain loss
         # loss = (jnp.abs(pred - target_sound)).mean()
-        # loss = naive_loss(spec_func(pred)[0],spec_func(target_sound))
         # loss = 1/dm_pix.ssim(clip_spec(spec_func(target_sound)),clip_spec(spec_func(pred)))
-        # loss = dm_pix.simse(clip_spec(spec_func(target_sound)),clip_spec(spec_func(pred)))
-        # loss = dtw_jax(pred,target_sound)
-        loss = dtw_jax(onset_1d(target_sound, kernel, spec_func),onset_1d(pred, kernel, spec_func))
-        # loss = naive_loss(scat_jax(target_sound), scat_jax(pred))
-        # jax.debug.print("loss_helpers:{y},loss:{l}",y=loss_helpers.onset_1d(pred)[0:3],l=loss)
+        if lfn  == 'L1_Spec':
+            loss = naive_loss(spec_func(pred)[0], spec_func(target_sound))
+        elif lfn  == 'SIMSE_Spec':
+            loss = dm_pix.simse(clip_spec(spec_func(target_sound)), clip_spec(spec_func(pred)))
+        elif lfn  == 'DTW_Onset':
+            loss = dtw_jax(onset_1d(target_sound, kernel, spec_func), onset_1d(pred, kernel, spec_func))
+        elif lfn  == 'JTFS':
+            loss = naive_loss(scat_jax(target_sound), scat_jax(pred))
+        else:
+            raise ValueError("Invalid value for loss")  
         return loss, pred
 
     # Clip gradients function
@@ -268,7 +300,7 @@ def __(
     real_params = {k: [init_params[k]] for k in true_params.keys()}  # will record parameters while searching
     norm_params = {k: [] for k in true_params.keys()}  # will record parameters while searching
 
-    for n in range(150):
+    for n in range(200):
         state, loss = train_step(state)
         if n % 1 == 0:
             audio, mod_vars = instrument_jit(state.params, noise, SAMPLE_RATE)
@@ -287,6 +319,7 @@ def __(
         clip_grads,
         grad_fn,
         learning_rate,
+        lfn,
         loss,
         loss_fn,
         losses,
@@ -338,8 +371,6 @@ def __(mo):
 
 @app.cell
 def __(instrument_params, np, pd):
-
-
     def make_programs_df(true_params, granularity):
         # make programs that cover the grid, given the parameters dict
         meshgrid = np.meshgrid(*[np.linspace(-0.95, 1, granularity, endpoint=False) for i in range(len(true_params.keys()))])
@@ -348,7 +379,7 @@ def __(instrument_params, np, pd):
         return programs_df
 
 
-    granularity = 8
+    granularity = 15
     programs_df = make_programs_df(instrument_params["params"], granularity)
     return granularity, make_programs_df, programs_df
 
@@ -361,6 +392,7 @@ def __(grad_fn, programs_df):
 
 @app.cell
 def __(
+    experiment,
     grad_loss_dict,
     granularity,
     instrument_params,
@@ -375,46 +407,35 @@ def __(
     plt.figure(figsize=(6, 6))
     data = np.array([x[0][0] for x in grad_loss_dict]).reshape(granularity, granularity)
 
-    plt.imshow(data, cmap="coolwarm", extent=(-1, 1, -1, 1), origin="lower")
+    plt.imshow(data, cmap="Blues", extent=(-1, 1, -1, 1), origin="lower")
+    # Add a color bar on the right
+    # plt.colorbar(label='loss',orientation="vertical",aspect=5)
 
     grad_dir = np.array([list(x[1]["params"].values()) for x in grad_loss_dict])
-    grad_dir = np.where(grad_dir>0,1,-1)
+    # grad_dir = np.where(grad_dir>0,1,-1)
     plt.quiver(*programs_df.T.to_numpy(), *-grad_dir.T)
-    plt.scatter(*true_instrument_params["params"].values(), color="#00FF00", marker="*", s=[150])
-    plt.scatter(*instrument_params["params"].values(), color="#00FF00", marker="o", s=[150])
+    plt.scatter(*true_instrument_params["params"].values(), edgecolors="black",linewidth=1,color="#00FF00", marker="*", s=[550],label="Target")
+    plt.scatter(*instrument_params["params"].values(), color="#00FF00", marker="o", s=[250],edgecolors="black",label="Init. Params.")
 
     # path 
-    plt.scatter(*list(norm_params.values()),color="white",alpha=0.5,s=[30],marker=".")
+    simple_norm_params = {k: v[::15] for k, v in norm_params.items()}
+    plt.scatter(*list(simple_norm_params.values()),color="#FF0000",alpha=1,s=[150],marker=".",edgecolors="black",linewidths=1,label="Update Path")
+    plt.plot(*list(simple_norm_params.values()),color="#FF0000",alpha=1,marker=".")
 
-    #
-    plt.xlabel(programs_df.columns[0])
-    plt.ylabel(programs_df.columns[1])
-    return data, grad_dir
+    plt.xlim(-1, 1)   # Limit x-axis from 2 to 8
+    plt.ylim(-1, 1)  # Limit y-axis from -0.5 to 0.
 
+    plt.tight_layout()
+    plt.xlabel(programs_df.columns[0].split("/")[-1])
+    plt.ylabel(programs_df.columns[1].split("/")[-1])
 
-@app.cell
-def __():
-    return
+    # plt.legend(loc='upper left', bbox_to_anchor=(1, 1),markerscale=0.6)
+    # plt.tight_layout()
+    # plt.subplots_adjust(right=1, top=0.95, bottom=0, left=0.0)
 
-
-@app.cell
-def __():
-    return
-
-
-@app.cell
-def __():
-    # ideas:
-    # show path traveled on quiver plots
-    # fix dtw_loss
-    # fix multi-level spec loss
-    # try the modulated sine cut-off program in original code
-    # make a grad surface and calculate how useful a loss is with how many points it can reach the goal based on a learning rate
-    # multi-objective loss function
-    #
-    # have to define your loss functions 
-    # have to define your programs (maybe before your loss functions so you can show landscapes)
-    return
+    # plt.show()
+    plt.savefig("./plots/p%d_%s.png"%(experiment["program_id"],experiment["loss"]),bbox_inches='tight', pad_inches=0, transparent=True)
+    return data, grad_dir, simple_norm_params
 
 
 if __name__ == "__main__":
