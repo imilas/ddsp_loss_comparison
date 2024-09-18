@@ -1,0 +1,65 @@
+{
+  "programs": {
+    "0": {
+      "program_id": 0,
+      "true_params": {
+        "hp_cut": 100,
+        "lp_cut": 900
+      },
+      "init_params": {
+        "hp_cut": 20,
+        "lp_cut": 100
+      },
+      "program": "import(\"stdfaust.lib\");\nlp_cut = hslider(\"lp_cut\",{lp_cut},50,1000,1);\nhp_cut = hslider(\"hp_cut\",{hp_cut},1,120,1);\nprocess = no.noise:fi.lowpass(3,lp_cut):fi.highpass(10,hp_cut);"
+    },
+    "1": {
+      "program_id": 1,
+      "true_params": {
+        "amp": 10,
+        "carrier": 500
+      },
+      "init_params": {
+        "amp": 6,
+        "carrier": 100
+      },
+      "program": "import(\"stdfaust.lib\");\ncarrier = hslider(\"carrier\",{carrier},20,1000,1);\namp = hslider(\"amp\",{amp},1,20,1);\nsineOsc(f) = +(f/ma.SR) ~ ma.frac:*(2*ma.PI) : sin;\nsawOsc(f) = +(f/ma.SR) ~ ma.frac;\nprocess = sineOsc(amp)*sawOsc(carrier);"
+    },
+    "2": {
+      "program_id": 2,
+      "true_params": {
+        "amp": 3,
+        "carrier": 2
+      },
+      "init_params": {
+        "amp": 0.5,
+        "carrier": 0.5
+      },
+      "program": "import(\"stdfaust.lib\");\namp = hslider(\"amp\",{amp},0,5,0.01);\ncarrier = hslider(\"carrier\",{carrier},0,4,0.01);\nsineOsc(f) = +(f/ma.SR) ~ ma.frac:*(2*ma.PI) : sin;\nprocess = no.noise*sineOsc(carrier)*amp;"
+    },
+    "3": {
+      "program_id": 3,
+      "true_params": {
+        "saw_freq": 200,
+        "sine_freq": 100
+      },
+      "init_params": {
+        "saw_freq": 800,
+        "sine_freq": 300
+      },
+      "program": "import(\"stdfaust.lib\");\nsaw_freq = hslider(\"saw_freq\",{saw_freq},20,1000,1);\nsine_freq = hslider(\"sine_freq\",{sine_freq},20,1000,1);\nsineOsc(f) = +(f/ma.SR) ~ ma.frac:*(2*ma.PI) : sin;\nsawOsc(f) = +(f/ma.SR) ~ ma.frac;\nprocess = sineOsc(sine_freq)+sawOsc(saw_freq);"
+    },
+    "4": {
+      "program_id": 4,
+      "true_params": {
+        "amp": 7,
+        "carrier": 130
+      },
+      "init_params": {
+        "amp": 2.5,
+        "carrier": 80
+      },
+      "program": "import(\"stdfaust.lib\");\ncarrier = hslider(\"carrier\",{carrier},20,300,0.1);\namp = hslider(\"amp\",{amp},0,10,0.1);\nsineOsc(f) = +(f/ma.SR) ~ ma.frac:*(2*ma.PI) : sin;\nprocess = sineOsc(amp)*sineOsc(carrier);"
+    }
+  }
+}
+
