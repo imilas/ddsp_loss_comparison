@@ -15,14 +15,14 @@
     "1": {
       "program_id": 1,
       "true_params": {
-        "amp": 10,
-        "carrier": 500
+        "saw_freq": 200,
+        "sine_freq": 100
       },
       "init_params": {
-        "amp": 6,
-        "carrier": 100
+        "saw_freq": 800,
+        "sine_freq": 300
       },
-      "program": "import(\"stdfaust.lib\");\ncarrier = hslider(\"carrier\",{carrier},20,1000,1);\namp = hslider(\"amp\",{amp},1,20,1);\nsineOsc(f) = +(f/ma.SR) ~ ma.frac:*(2*ma.PI) : sin;\nsawOsc(f) = +(f/ma.SR) ~ ma.frac;\nprocess = sineOsc(amp)*sawOsc(carrier);"
+      "program": "import(\"stdfaust.lib\");\nsaw_freq = hslider(\"saw_freq\",{saw_freq},20,1000,1);\nsine_freq = hslider(\"sine_freq\",{sine_freq},20,1000,1);\nsineOsc(f) = +(f/ma.SR) ~ ma.frac:*(2*ma.PI) : sin;\nsawOsc(f) = +(f/ma.SR) ~ ma.frac;\nprocess = sineOsc(sine_freq)+sawOsc(saw_freq);"
     },
     "2": {
       "program_id": 2,
@@ -39,14 +39,14 @@
     "3": {
       "program_id": 3,
       "true_params": {
-        "saw_freq": 200,
-        "sine_freq": 100
+        "amp": 10,
+        "carrier": 500
       },
       "init_params": {
-        "saw_freq": 800,
-        "sine_freq": 300
+        "amp": 6,
+        "carrier": 100
       },
-      "program": "import(\"stdfaust.lib\");\nsaw_freq = hslider(\"saw_freq\",{saw_freq},20,1000,1);\nsine_freq = hslider(\"sine_freq\",{sine_freq},20,1000,1);\nsineOsc(f) = +(f/ma.SR) ~ ma.frac:*(2*ma.PI) : sin;\nsawOsc(f) = +(f/ma.SR) ~ ma.frac;\nprocess = sineOsc(sine_freq)+sawOsc(saw_freq);"
+      "program": "import(\"stdfaust.lib\");\ncarrier = hslider(\"carrier\",{carrier},20,1000,1);\namp = hslider(\"amp\",{amp},1,20,1);\nsineOsc(f) = +(f/ma.SR) ~ ma.frac:*(2*ma.PI) : sin;\nsawOsc(f) = +(f/ma.SR) ~ ma.frac;\nprocess = sineOsc(amp)*sawOsc(carrier);"
     },
     "4": {
       "program_id": 4,

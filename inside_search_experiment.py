@@ -165,7 +165,7 @@ def __(args):
     experiment = {
         "program_id": args.program_number,
         "loss": args.loss_fn,
-        "lr": 0.02
+        "lr": 0.045
     }
     experiment["program_and_params"] = load_programs("./programs_and_params.json")["programs"][str(experiment["program_id"])]
     print(experiment)
