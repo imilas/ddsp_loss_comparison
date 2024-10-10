@@ -11,18 +11,6 @@ def __():
 
 
 @app.cell
-def __(mo):
-    mo.md(
-        f"""
-    This is a streamlined experiment for testing out loss functions. We manually define a synthesizer program containing _target parameters_ which make a _target sound_\. <br>
-    In the experiments, the target paramaters are changed from their original values. The goal of the search function is to find the target parameters by comparing the output of the synthesizer to the target sound. This comparison is done via the _loss function_\. We analyize the effect of the loss functions on the search process. <br>
-    The main variable of interest is whether or not the process successfully finds the target parameter, but we also care about speed and steps it takes to find the target.
-    """
-    )
-    return
-
-
-@app.cell
 def __():
     import functools
     from functools import partial
@@ -99,7 +87,8 @@ def __(argparse):
 
     # Add a string argument
     parser.add_argument('--loss_fn', type=str, help='the name of the loss function. One of:  L1_Spec , DTW_Onset, SIMSE_Spec, JTFS',default="L1_Spec")
-    parser.add_argument('--program_number', type=int, help='program number',default=1)
+    parser.add_argument('--learning_rate', type=float, help='learning rate',default=0.01)
+    parser.add_argument('--program_id', type=int, choices=[0, 1, 2, 3], default = 0, help="The program ID to select (0, 1, 2, or 3)")
     args, unknown = parser.parse_known_args()
 
     # Parse the arguments
@@ -123,13 +112,10 @@ def __(SAMPLE_RATE, Scattering1D, jnp, loss_helpers, np, softdtw_jax):
     HOP_LEN = 100
     spec_func = loss_helpers.spec_func(NFFT, WIN_LEN, HOP_LEN)
 
-
     def clip_spec(x):
         return jnp.clip(x, a_min=0, a_max=1)
-
-
+        
     dtw_jax = softdtw_jax.SoftDTW(gamma=0.8)
-
     kernel = jnp.array(loss_helpers.gaussian_kernel1d(3, 0, 10))  # create a gaussian kernel (sigma,order,radius)
 
     J = 6  # higher creates smoother loss but more costly
@@ -155,54 +141,66 @@ def __(SAMPLE_RATE, Scattering1D, jnp, loss_helpers, np, softdtw_jax):
 
 
 @app.cell
-def __(args, json):
-    def load_programs(json_file):
-        with open(json_file, 'r') as file:
-            data = json.load(file)
-        return data
+def __(args):
+    from helpers.program_generators import choose_program
 
-    # L1_Spec , DTW_Onset, SIMSE_Spec, JTFS
-    experiment = {
-        "program_id": args.program_number,
-        "loss": args.loss_fn,
-        "lr": 0.045
-    }
-    experiment["program_and_params"] = load_programs("./programs_and_params.json")["programs"][str(experiment["program_id"])]
-    print(experiment)
-    return experiment, load_programs
+    var1_range = (50, 1000)
+    var2_range = (1, 120)
+    true_var1 = sum(var1_range)//2
+    true_var2 = sum(var2_range)//2
+
+        # prog_code, var1_value, var2_value, var_names = choose_program(args.program_id, var1_range, var2_range)
+
+    rand_prog_code, var1_value, var2_value = choose_program(args.program_id, var1_range, var2_range)
+    true_prog_code, true_var1_value, true_var2_value = choose_program(args.program_id,var1_range, var2_range,true_var1,true_var2)
+    print("Program 0 Code:\n", true_prog_code)
+    print("init vars",var1_value,var2_value)
+    print("true vars",true_var1_value,true_var2_value)
+    return (
+        choose_program,
+        rand_prog_code,
+        true_prog_code,
+        true_var1,
+        true_var1_value,
+        true_var2,
+        true_var2_value,
+        var1_range,
+        var1_value,
+        var2_range,
+        var2_value,
+    )
 
 
 @app.cell
-def __(SAMPLE_RATE, experiment, fj, jax):
+def __(SAMPLE_RATE, args, fj, jax, rand_prog_code, true_prog_code):
+    # L1_Spec , DTW_Onset, SIMSE_Spec, JTFS
+    experiment = {
+        "program_id": args.program_id,
+        "loss": args.loss_fn,
+        "lr": 0.045
+    }
+
     fj.SAMPLE_RATE = SAMPLE_RATE
     key = jax.random.PRNGKey(10)
 
-    true_params = experiment["program_and_params"]["true_params"]
-    init_params = experiment["program_and_params"]["init_params"]
+    true_instrument, true_instrument_jit, true_noise, true_instrument_params = fj.code_to_flax(true_prog_code, key)
+    instrument, instrument_jit, noise, instrument_params = fj.code_to_flax(rand_prog_code, key)
 
-    program = experiment["program_and_params"]["program"]
+    variable_names = [key.split("/")[1] for key in instrument_params["params"].keys()]
 
-    true_code = program.format(**true_params)
-    instrument_code = program.format(**init_params)
-
-    true_instrument, true_instrument_jit, true_noise, true_instrument_params = fj.code_to_flax(true_code, key)
-    instrument, instrument_jit, noise, instrument_params = fj.code_to_flax(instrument_code, key)
     print(instrument_params)
     return (
-        init_params,
+        experiment,
         instrument,
-        instrument_code,
         instrument_jit,
         instrument_params,
         key,
         noise,
-        program,
-        true_code,
         true_instrument,
         true_instrument_jit,
         true_instrument_params,
         true_noise,
-        true_params,
+        variable_names,
     )
 
 
@@ -232,7 +230,6 @@ def __(
     dm_pix,
     dtw_jax,
     experiment,
-    init_params,
     instrument,
     instrument_jit,
     instrument_params,
@@ -248,7 +245,7 @@ def __(
     spec_func,
     target_sound,
     train_state,
-    true_params,
+    variable_names,
 ):
     learning_rate = experiment["lr"]
     # Create Train state
@@ -297,8 +294,8 @@ def __(
 
     losses = []
     sounds = []
-    real_params = {k: [init_params[k]] for k in true_params.keys()}  # will record parameters while searching
-    norm_params = {k: [] for k in true_params.keys()}  # will record parameters while searching
+    real_params = {k: [] for k in variable_names}  # will record parameters while searching
+    norm_params = {k: [] for k in variable_names}  # will record parameters while searching
 
     for n in range(200):
         state, loss = train_step(state)
@@ -337,35 +334,8 @@ def __(
 
 
 @app.cell
-def __(losses, mo, plt, real_params, true_params):
-    mo.output.clear()
-    fig1, axs = plt.subplots(1, len(real_params) + 1, figsize=(12, 3))
-    axs[0].set_xlabel("time (s)")
-    axs[0].set_ylabel("loss", color="black")
-    axs[0].plot(losses, color="black")
-
-    c = 0
-    colors = ["red", "green", "blue", "purple"]
-    for pname2, pvalue in real_params.items():
-        ax = axs[c + 1]
-        ax.set_ylabel(pname2)  # we already handled the x-label with ax1
-        ax.plot(real_params[pname2], color=colors[c])
-        ax.axhline(true_params[pname2], linestyle="dashed", color=colors[c], label="true")
-        ax.tick_params(axis="y")
-        c += 1
-    fig1.tight_layout()  # otherwise the right y-label is slightly clipped
-    fig1
-    return ax, axs, c, colors, fig1, pname2, pvalue
-
-
-@app.cell
-def __(mo):
-    mo.md(
-        """quiver plots
-    1. Define grad function using loss
-    2. draw quivers
-    """
-    )
+def __(norm_params):
+    norm_params
     return
 
 
@@ -379,7 +349,7 @@ def __(grad_fn, instrument_params, np, pd):
         return programs_df
 
 
-    granularity = 15
+    granularity = 5
     programs_df = make_programs_df(instrument_params["params"], granularity)
     grad_loss_dict = [grad_fn({"params": programs_df.loc[i].to_dict()}) for i in range(len(programs_df))]
     return grad_loss_dict, granularity, make_programs_df, programs_df
@@ -387,7 +357,6 @@ def __(grad_fn, instrument_params, np, pd):
 
 @app.cell
 def __(
-    experiment,
     grad_loss_dict,
     granularity,
     instrument_params,
@@ -428,15 +397,127 @@ def __(
     # plt.tight_layout()
     # plt.subplots_adjust(right=1, top=0.95, bottom=0, left=0.0)
 
-    # plt.show()
-    plt.savefig("./plots/p%d_%s.png"%(experiment["program_id"],experiment["loss"]),bbox_inches='tight', pad_inches=0, transparent=True)
+    plt.show()
+    # plt.savefig("./plots/p%d_%s.png"%(experiment["program_id"],experiment["loss"]),bbox_inches='tight', pad_inches=0, transparent=True)
     return data, grad_dir, simple_norm_params
 
 
 @app.cell
-def __(grad_loss_dict):
-    grad_loss_dict
+def __(experiment, norm_params, true_instrument_params):
+    # variables that need saving
+    experiment["true_params"] = true_instrument_params
+    experiment["norm_params"] = norm_params
+    experiment
     return
+
+
+@app.cell
+def __(experiment, json, np, os):
+
+    def convert_to_serializable(obj):
+        """
+        Recursively convert non-serializable objects (like NumPy arrays) to serializable types.
+        """
+        if isinstance(obj, dict):
+            return {k: convert_to_serializable(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_to_serializable(v) for v in obj]
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()  # Convert NumPy array to list
+        elif hasattr(obj, 'tolist'):  # If the object has a 'tolist' method (like some tensor types)
+            return obj.tolist()
+        elif isinstance(obj, (int, float, str, bool)) or obj is None:
+            return obj  # Directly serializable types
+        else:
+            return str(obj)  # Convert unknown objects to their string representation
+
+    def append_to_json(file_path, new_data):
+        """
+        Appends a dictionary to a JSON file. If the file doesn't exist, it creates a new one.
+        
+        Args:
+            file_path (str): Path to the JSON file.
+            new_data (dict): Dictionary to append.
+        """
+        # Check if the file exists
+        if os.path.exists(file_path):
+            # Read the existing content
+            with open(file_path, 'r') as file:
+                try:
+                    data = json.load(file)
+                except json.JSONDecodeError:
+                    # If the file is empty or contains invalid JSON, initialize as an empty list
+                    data = []
+        else:
+            # If the file does not exist, initialize as an empty list
+            data = []
+
+        # Convert new_data and its contents to serializable types
+        new_data = convert_to_serializable(new_data)
+
+        # Append the new data (ensure the file is a list)
+        if isinstance(data, list):
+            data.append(new_data)
+        else:
+            raise ValueError("Expected the JSON file to contain a list")
+
+        # Write the updated content back to the file
+        with open(file_path, 'w') as file:
+            json.dump(data, file, indent=4)
+
+    # Specify the path to the JSON file
+    json_file_path = 'results/experiments.json'
+
+    # Example experiment dictionary (modify it based on your actual data)
+    # experiment = {
+    #     "program_id": 0,
+    #     "loss": "L1_Spec",
+    #     "lr": 0.045,
+    #     "params": {
+    #         "_dawdreamer/hp_cut": np.array([-0.008403360843658447]),
+    #         "_dawdreamer/lp_cut": np.array([0.0])
+    #     }
+    # }
+
+    # Call the function to append to the JSON file
+    append_to_json(json_file_path, experiment)
+
+    # Output the experiment for verification
+    experiment
+
+    return append_to_json, convert_to_serializable, json_file_path
+
+
+@app.cell
+def __(json, os):
+
+    def load_json(file_path):
+        """
+        Loads a JSON file and returns its content.
+        
+        Args:
+            file_path (str): Path to the JSON file.
+        
+        Returns:
+            dict or list: The content of the JSON file.
+            None: If the file does not exist or is empty.
+        """
+        if os.path.exists(file_path):
+            with open(file_path, 'r') as file:
+                try:
+                    data = json.load(file)
+                    return data
+                except json.JSONDecodeError:
+                    print("Error: The file contains invalid JSON.")
+                    return None
+        else:
+            print(f"Error: The file '{file_path}' does not exist.")
+            return None
+
+
+
+    load_json("results/experiments.json")
+    return load_json,
 
 
 if __name__ == "__main__":
