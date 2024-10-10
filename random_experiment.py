@@ -334,190 +334,31 @@ def __(
 
 
 @app.cell
-def __(norm_params):
-    norm_params
-    return
-
-
-@app.cell
-def __(grad_fn, instrument_params, np, pd):
-    def make_programs_df(true_params, granularity):
-        # make programs that cover the grid, given the parameters dict
-        meshgrid = np.meshgrid(*[np.linspace(-0.95, 1, granularity, endpoint=False) for i in range(len(true_params.keys()))])
-        program_params = np.stack([d.flatten() for d in meshgrid], axis=-1)
-        programs_df = pd.DataFrame(program_params, columns=true_params.keys())
-        return programs_df
-
-
-    granularity = 5
-    programs_df = make_programs_df(instrument_params["params"], granularity)
-    grad_loss_dict = [grad_fn({"params": programs_df.loc[i].to_dict()}) for i in range(len(programs_df))]
-    return grad_loss_dict, granularity, make_programs_df, programs_df
-
-
-@app.cell
-def __(
-    grad_loss_dict,
-    granularity,
-    instrument_params,
-    mo,
-    norm_params,
-    np,
-    plt,
-    programs_df,
-    true_instrument_params,
-):
-    mo.output.clear()
-    plt.figure(figsize=(6, 6))
-    data = np.array([x[0][0] for x in grad_loss_dict]).reshape(granularity, granularity)
-
-    plt.imshow(data, cmap="Blues", extent=(-1, 1, -1, 1), origin="lower")
-    # Add a color bar on the right
-    # plt.colorbar(label='loss',orientation="vertical",aspect=5)
-
-    grad_dir = np.array([list(x[1]["params"].values()) for x in grad_loss_dict])
-    # grad_dir = np.where(grad_dir>0,1,-1)
-    plt.quiver(*programs_df.T.to_numpy(), *-grad_dir.T)
-    plt.scatter(*true_instrument_params["params"].values(), edgecolors="black",linewidth=1,color="#00FF00", marker="*", s=[550],label="Target")
-    plt.scatter(*instrument_params["params"].values(), color="#00FF00", marker="o", s=[250],edgecolors="black",label="Init. Params.")
-
-    # path 
-    simple_norm_params = {k: v[::15] for k, v in norm_params.items()}
-    plt.scatter(*list(simple_norm_params.values()),color="#FF0000",alpha=1,s=[150],marker=".",edgecolors="black",linewidths=1,label="Update Path")
-    plt.plot(*list(simple_norm_params.values()),color="#FF0000",alpha=1,marker=".")
-
-    plt.xlim(-1, 1)   # Limit x-axis from 2 to 8
-    plt.ylim(-1, 1)  # Limit y-axis from -0.5 to 0.
-
-    plt.tight_layout()
-    plt.xlabel(programs_df.columns[0].split("/")[-1])
-    plt.ylabel(programs_df.columns[1].split("/")[-1])
-
-    # plt.legend(loc='upper left', bbox_to_anchor=(1, 1),markerscale=0.6)
-    # plt.tight_layout()
-    # plt.subplots_adjust(right=1, top=0.95, bottom=0, left=0.0)
-
-    plt.show()
-    # plt.savefig("./plots/p%d_%s.png"%(experiment["program_id"],experiment["loss"]),bbox_inches='tight', pad_inches=0, transparent=True)
-    return data, grad_dir, simple_norm_params
-
-
-@app.cell
 def __(experiment, norm_params, true_instrument_params):
+    from helpers.experiment_scripts import append_to_json
     # variables that need saving
     experiment["true_params"] = true_instrument_params
     experiment["norm_params"] = norm_params
-    experiment
-    return
 
-
-@app.cell
-def __(experiment, json, np, os):
-
-    def convert_to_serializable(obj):
-        """
-        Recursively convert non-serializable objects (like NumPy arrays) to serializable types.
-        """
-        if isinstance(obj, dict):
-            return {k: convert_to_serializable(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [convert_to_serializable(v) for v in obj]
-        elif isinstance(obj, np.ndarray):
-            return obj.tolist()  # Convert NumPy array to list
-        elif hasattr(obj, 'tolist'):  # If the object has a 'tolist' method (like some tensor types)
-            return obj.tolist()
-        elif isinstance(obj, (int, float, str, bool)) or obj is None:
-            return obj  # Directly serializable types
-        else:
-            return str(obj)  # Convert unknown objects to their string representation
-
-    def append_to_json(file_path, new_data):
-        """
-        Appends a dictionary to a JSON file. If the file doesn't exist, it creates a new one.
-        
-        Args:
-            file_path (str): Path to the JSON file.
-            new_data (dict): Dictionary to append.
-        """
-        # Check if the file exists
-        if os.path.exists(file_path):
-            # Read the existing content
-            with open(file_path, 'r') as file:
-                try:
-                    data = json.load(file)
-                except json.JSONDecodeError:
-                    # If the file is empty or contains invalid JSON, initialize as an empty list
-                    data = []
-        else:
-            # If the file does not exist, initialize as an empty list
-            data = []
-
-        # Convert new_data and its contents to serializable types
-        new_data = convert_to_serializable(new_data)
-
-        # Append the new data (ensure the file is a list)
-        if isinstance(data, list):
-            data.append(new_data)
-        else:
-            raise ValueError("Expected the JSON file to contain a list")
-
-        # Write the updated content back to the file
-        with open(file_path, 'w') as file:
-            json.dump(data, file, indent=4)
 
     # Specify the path to the JSON file
-    json_file_path = 'results/experiments.json'
-
-    # Example experiment dictionary (modify it based on your actual data)
-    # experiment = {
-    #     "program_id": 0,
-    #     "loss": "L1_Spec",
-    #     "lr": 0.045,
-    #     "params": {
-    #         "_dawdreamer/hp_cut": np.array([-0.008403360843658447]),
-    #         "_dawdreamer/lp_cut": np.array([0.0])
-    #     }
-    # }
+    json_file_path = './results/experiments.json'
 
     # Call the function to append to the JSON file
     append_to_json(json_file_path, experiment)
 
-    # Output the experiment for verification
-    experiment
-
-    return append_to_json, convert_to_serializable, json_file_path
+    return append_to_json, json_file_path
 
 
 @app.cell
-def __(json, os):
-
-    def load_json(file_path):
-        """
-        Loads a JSON file and returns its content.
-        
-        Args:
-            file_path (str): Path to the JSON file.
-        
-        Returns:
-            dict or list: The content of the JSON file.
-            None: If the file does not exist or is empty.
-        """
-        if os.path.exists(file_path):
-            with open(file_path, 'r') as file:
-                try:
-                    data = json.load(file)
-                    return data
-                except json.JSONDecodeError:
-                    print("Error: The file contains invalid JSON.")
-                    return None
-        else:
-            print(f"Error: The file '{file_path}' does not exist.")
-            return None
+def __():
 
 
 
-    load_json("results/experiments.json")
-    return load_json,
+
+
+    # load_json("results/experiments.json")
+    return
 
 
 if __name__ == "__main__":
