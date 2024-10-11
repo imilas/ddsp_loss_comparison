@@ -11,10 +11,13 @@ def __():
     return load_json, mo
 
 
-@app.cell
-def __(load_json):
-    load_json("results/experiments.json")
-    return
+app._unparsable_cell(
+    r"""
+    d = load_json(\"results/experiments.json\")
+    d = 
+    """,
+    name="__"
+)
 
 
 if __name__ == "__main__":
