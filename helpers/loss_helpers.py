@@ -67,3 +67,42 @@ def spec_func(nfft,win_len,hop_len):
     )
 
     return spec_func
+
+def return_mel_spec(NFFT,SR=44100):
+    WIN_LEN = 400
+    HOP_LEN = 20
+    window = jnp.hanning(WIN_LEN)
+    spec_func = partial(functional.spectrogram, pad=0, window=window, n_fft=NFFT,
+                       hop_length=HOP_LEN, win_length=WIN_LEN, power=1,
+                       normalized=False, center=False, onesided=True)
+    fb = functional.melscale_fbanks(n_freqs=(NFFT//2)+1, n_mels=32,
+                             sample_rate=SR, f_min=60., f_max=SR//2)
+    mel_spec_func = partial(functional.apply_melscale, melscale_filterbank=fb)
+
+    jax_spec = jax.jit(spec_func)
+    mel_spec = jax.jit(mel_spec_func) 
+    return mel_spec,jax_spec
+
+def norm_sound(sound):
+    return sound / jnp.max(sound)
+
+def single_level_loss(mel_fun, spec_fun, p, t):
+    p_spec = mel_fun(spec_fun(p))
+    t_spec = mel_fun(spec_fun(t))
+    loss = jnp.abs(p_spec - t_spec) + jnp.abs(jnp.log(p_spec) - jnp.log(t_spec))
+    return loss, p_spec, t_spec
+
+def loss_multi_spec(prediction, target,spec_funs):
+    # Normalize sound signals
+    prediction = norm_sound(prediction)
+    target = norm_sound(target)
+    
+    # Calculate losses at each level
+    loss_0, _, _ = single_level_loss(spec_funs[0][0], spec_funs[0][1], prediction, target)
+    loss_1, _, _ = single_level_loss(spec_funs[1][0], spec_funs[1][1], prediction, target)
+    loss_2, _, _ = single_level_loss(spec_funs[2][0], spec_funs[2][1], prediction, target)
+    loss_3, _, _ = single_level_loss(spec_funs[3][0], spec_funs[3][1], prediction, target)
+    
+    # Aggregate losses across all levels and take the mean
+    loss = jnp.mean(loss_0) + jnp.mean(loss_1) + jnp.mean(loss_2) + jnp.mean(loss_3)
+    return jnp.mean(loss)

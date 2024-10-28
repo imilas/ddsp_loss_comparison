@@ -39,6 +39,8 @@ def __():
     from helpers import faust_to_jax as fj
     from helpers import loss_helpers
     from helpers import softdtw_jax
+    from helpers.experiment_scripts import append_to_json
+
     from kymatio.jax import Scattering1D
     import json
     import argparse
@@ -52,6 +54,7 @@ def __():
         Path,
         SAMPLE_RATE,
         Scattering1D,
+        append_to_json,
         argparse,
         copy,
         default_device,
@@ -114,8 +117,8 @@ def __(SAMPLE_RATE, Scattering1D, jnp, loss_helpers, np, softdtw_jax):
 
     def clip_spec(x):
         return jnp.clip(x, a_min=0, a_max=1)
-        
-    dtw_jax = softdtw_jax.SoftDTW(gamma=0.8)
+
+    dtw_jax = softdtw_jax.SoftDTW(gamma=1)
     kernel = jnp.array(loss_helpers.gaussian_kernel1d(3, 0, 10))  # create a gaussian kernel (sigma,order,radius)
 
     J = 6  # higher creates smoother loss but more costly
@@ -123,6 +126,10 @@ def __(SAMPLE_RATE, Scattering1D, jnp, loss_helpers, np, softdtw_jax):
     scat_jax = Scattering1D(J, SAMPLE_RATE, Q)
 
     onset_1d = loss_helpers.onset_1d
+
+    # for Multi_Spec loss. Generate spec functions for each NFFT value
+    spec_funs = [loss_helpers.return_mel_spec(x, SAMPLE_RATE) for x in [512, 1024, 2048, 4096]]
+
     return (
         HOP_LEN,
         J,
@@ -137,6 +144,7 @@ def __(SAMPLE_RATE, Scattering1D, jnp, loss_helpers, np, softdtw_jax):
         onset_1d,
         scat_jax,
         spec_func,
+        spec_funs,
     )
 
 
@@ -297,7 +305,7 @@ def __(
     real_params = {k: [] for k in variable_names}  # will record parameters while searching
     norm_params = {k: [] for k in variable_names}  # will record parameters while searching
 
-    for n in range(200):
+    for n in range(150):
         state, loss = train_step(state)
         if n % 1 == 0:
             audio, mod_vars = instrument_jit(state.params, noise, SAMPLE_RATE)
@@ -334,29 +342,42 @@ def __(
 
 
 @app.cell
-def __(experiment, norm_params, true_instrument_params):
-    from helpers.experiment_scripts import append_to_json
+def __(
+    append_to_json,
+    dtw_jax,
+    experiment,
+    kernel,
+    loss_helpers,
+    naive_loss,
+    norm_params,
+    onset_1d,
+    scat_jax,
+    sounds,
+    spec_func,
+    spec_funs,
+    target_sound,
+    true_instrument_params,
+):
+
+
     # variables that need saving
     experiment["true_params"] = true_instrument_params
     experiment["norm_params"] = norm_params
-
-
+    experiment["Multi_spec"] = loss_helpers.loss_multi_spec(sounds[-1], target_sound,spec_funs)
+    experiment["L1_Spec"] = naive_loss(spec_func(sounds[-1]), spec_func(target_sound))
+    experiment["DTW_Onset"] = dtw_jax(onset_1d(target_sound, kernel, spec_func), onset_1d(sounds[-1], kernel, spec_func))
+    experiment["JTFS"] = naive_loss(scat_jax(target_sound), scat_jax(sounds[-1]))
+            
     # Specify the path to the JSON file
     json_file_path = './results/experiments.json'
 
     # Call the function to append to the JSON file
     append_to_json(json_file_path, experiment)
-
-    return append_to_json, json_file_path
+    return json_file_path,
 
 
 @app.cell
 def __():
-
-
-
-
-
     # load_json("results/experiments.json")
     return
 

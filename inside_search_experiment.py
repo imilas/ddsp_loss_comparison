@@ -98,16 +98,14 @@ def __(argparse):
     parser = argparse.ArgumentParser(description='Process a loss function name.')
 
     # Add a string argument
-    parser.add_argument('--loss_fn', type=str, help='the name of the loss function. One of:  L1_Spec , DTW_Onset, SIMSE_Spec, JTFS',default="L1_Spec")
-    parser.add_argument('--program_number', type=int, help='program number',default=1)
+    parser.add_argument('--loss_fn', type=str, help='the name of the loss function. One of:  L1_Spec , DTW_Onset, SIMSE_Spec, JTFS',default="DTW_Onset")
+    parser.add_argument('--program_number', type=int, help='program number',default=2)
     args, unknown = parser.parse_known_args()
 
-    # Parse the arguments
-    # args = parser.parse_args()
 
 
     # Use the argument
-    print(f'Loss function: {args.loss_fn}')
+    print(f'Loss function: {args.loss_fn}, program num {args.program_number}')
     return args, parser, unknown
 
 
@@ -128,7 +126,7 @@ def __(SAMPLE_RATE, Scattering1D, jnp, loss_helpers, np, softdtw_jax):
         return jnp.clip(x, a_min=0, a_max=1)
 
 
-    dtw_jax = softdtw_jax.SoftDTW(gamma=0.8)
+    dtw_jax = softdtw_jax.SoftDTW(gamma=1)
 
     kernel = jnp.array(loss_helpers.gaussian_kernel1d(3, 0, 10))  # create a gaussian kernel (sigma,order,radius)
 
@@ -226,6 +224,17 @@ def __(
 
 
 @app.cell
+def __():
+    return
+
+
+@app.cell
+def __(dtw_jax, kernel, onset_1d, spec_func, target_sound):
+    dtw_jax(onset_1d(target_sound, kernel, spec_func), onset_1d(target_sound, kernel, spec_func))
+    return
+
+
+@app.cell
 def __(
     SAMPLE_RATE,
     clip_spec,
@@ -239,6 +248,7 @@ def __(
     jax,
     jnp,
     kernel,
+    loss_multi_spec,
     naive_loss,
     noise,
     np,
@@ -257,6 +267,7 @@ def __(
         apply_fn=instrument.apply, params=instrument_params, tx=tx
     )
     lfn = experiment["loss"]
+    # lfn = "Multi_Spec"
 
     # loss fn shows the difference between the output of synth and a target_sound
     def loss_fn(params):
@@ -271,6 +282,8 @@ def __(
             loss = dtw_jax(onset_1d(target_sound, kernel, spec_func), onset_1d(pred, kernel, spec_func))
         elif lfn  == 'JTFS':
             loss = naive_loss(scat_jax(target_sound), scat_jax(pred))
+        elif lfn == 'Multi_Spec':
+            loss = loss_multi_spec(target_sound,pred)
         else:
             raise ValueError("Invalid value for loss")  
         return loss, pred
@@ -300,7 +313,7 @@ def __(
     real_params = {k: [init_params[k]] for k in true_params.keys()}  # will record parameters while searching
     norm_params = {k: [] for k in true_params.keys()}  # will record parameters while searching
 
-    for n in range(200):
+    for n in range(2):
         state, loss = train_step(state)
         if n % 1 == 0:
             audio, mod_vars = instrument_jit(state.params, noise, SAMPLE_RATE)
@@ -379,7 +392,7 @@ def __(grad_fn, instrument_params, np, pd):
         return programs_df
 
 
-    granularity = 15
+    granularity = 8
     programs_df = make_programs_df(instrument_params["params"], granularity)
     grad_loss_dict = [grad_fn({"params": programs_df.loc[i].to_dict()}) for i in range(len(programs_df))]
     return grad_loss_dict, granularity, make_programs_df, programs_df
@@ -387,7 +400,6 @@ def __(grad_fn, instrument_params, np, pd):
 
 @app.cell
 def __(
-    experiment,
     grad_loss_dict,
     granularity,
     instrument_params,
@@ -428,15 +440,9 @@ def __(
     # plt.tight_layout()
     # plt.subplots_adjust(right=1, top=0.95, bottom=0, left=0.0)
 
-    # plt.show()
-    plt.savefig("./plots/p%d_%s.png"%(experiment["program_id"],experiment["loss"]),bbox_inches='tight', pad_inches=0, transparent=True)
+    plt.show()
+    # plt.savefig("./plots/p%d_%s.png"%(experiment["program_id"],experiment["loss"]),bbox_inches='tight', pad_inches=0, transparent=True)
     return data, grad_dir, simple_norm_params
-
-
-@app.cell
-def __(grad_loss_dict):
-    grad_loss_dict
-    return
 
 
 if __name__ == "__main__":
