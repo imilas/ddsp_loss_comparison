@@ -305,7 +305,7 @@ def __(
     real_params = {k: [] for k in variable_names}  # will record parameters while searching
     norm_params = {k: [] for k in variable_names}  # will record parameters while searching
 
-    for n in range(150):
+    for n in range(100):
         state, loss = train_step(state)
         if n % 1 == 0:
             audio, mod_vars = instrument_jit(state.params, noise, SAMPLE_RATE)
@@ -343,7 +343,6 @@ def __(
 
 @app.cell
 def __(
-    append_to_json,
     dtw_jax,
     experiment,
     kernel,
@@ -363,22 +362,33 @@ def __(
     # variables that need saving
     experiment["true_params"] = true_instrument_params
     experiment["norm_params"] = norm_params
-    experiment["Multi_spec"] = loss_helpers.loss_multi_spec(sounds[-1], target_sound,spec_funs)
+    experiment["Multi_Spec"] = loss_helpers.loss_multi_spec(sounds[-1], target_sound,spec_funs)
     experiment["L1_Spec"] = naive_loss(spec_func(sounds[-1]), spec_func(target_sound))
     experiment["DTW_Onset"] = dtw_jax(onset_1d(target_sound, kernel, spec_func), onset_1d(sounds[-1], kernel, spec_func))
     experiment["JTFS"] = naive_loss(scat_jax(target_sound), scat_jax(sounds[-1]))
             
-    # Specify the path to the JSON file
-    json_file_path = './results/experiments.json'
+    # # Specify the path to the JSON file
+    # json_file_path = './results/experiments.json'
 
-    # Call the function to append to the JSON file
-    append_to_json(json_file_path, experiment)
-    return json_file_path,
+    # # Call the function to append to the JSON file
+    # append_to_json(json_file_path, experiment)
+
+    import pickle
+    import uuid
+
+    # Generate a random file name
+    file_name = f"./results/{uuid.uuid4()}.pkl"
+
+    # Save the dictionary with the random file name
+    with open(file_name, "wb") as file:
+        pickle.dump(experiment, file)
+
+    print(f"File saved as: {file_name}")
+    return file, file_name, pickle, uuid
 
 
 @app.cell
 def __():
-    # load_json("results/experiments.json")
     return
 
 

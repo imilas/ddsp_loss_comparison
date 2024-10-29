@@ -1,6 +1,7 @@
 import os
 import json 
 import numpy as np
+from colorist import Color
 
 def convert_to_serializable(obj):
     """
@@ -34,10 +35,13 @@ def append_to_json(file_path, new_data):
             try:
                 data = json.load(file)
             except json.JSONDecodeError:
+                print(f"{Color.RED}failed to load file{Color.OFF}")
+                return
                 # If the file is empty or contains invalid JSON, initialize as an empty list
                 data = []
     else:
         # If the file does not exist, initialize as an empty list
+        print(f"{Color.CYAN} initializing experiment file{Color.OFF}")
         data = []
 
     # Convert new_data and its contents to serializable types

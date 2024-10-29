@@ -9,43 +9,91 @@ def __():
     import marimo as mo
     from helpers.experiment_scripts import load_json
     import numpy as np
-    return load_json, mo, np
+    from math import nan, isnan
+    import scikit_posthocs as sp
+    from scipy import stats
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    from statsmodels.stats.multicomp import pairwise_tukeyhsd
+    return (
+        isnan,
+        load_json,
+        mo,
+        nan,
+        np,
+        pairwise_tukeyhsd,
+        plt,
+        sns,
+        sp,
+        stats,
+    )
 
 
 @app.cell
-def __(load_json):
-    d = load_json("results/experiments.json")
-    return d,
+def __():
+    import os
+    import pickle
+
+    # Directory containing pickle files
+    directory = "./results/"
+
+    # List to store loaded dictionaries
+    d = []
+
+    # Iterate over all files in the directory
+    for filename in os.listdir(directory):
+        if filename.endswith(".pkl"):
+            file_path = os.path.join(directory, filename)
+            
+            # Load each pickle file and append the data to the list
+            with open(file_path, "rb") as file:
+                exp_dictionary= pickle.load(file)
+                d.append(exp_dictionary)
+
+    # d = [e for e in d if "Multi_Spec" in e]
+    len(d)
+    return (
+        d,
+        directory,
+        exp_dictionary,
+        file,
+        file_path,
+        filename,
+        os,
+        pickle,
+    )
 
 
 @app.cell
 def __():
     lfn_names = ['DTW_Onset','L1_Spec' ,'SIMSE_Spec', 'JTFS']
-    return lfn_names,
+    program_num = 3
+    return lfn_names, program_num
 
 
 @app.cell
-def __(d, lfn_names, np):
-    from math import nan, isnan
+def __(d, isnan, lfn_names, np, program_num):
     def get_p_error(e):
+        """calculate p-loss given an experiment dictionary"""
         p1 = np.array(list(e["true_params"]["params"].values()))
         p2 = np.array(list(e["norm_params"].values()))[:,-1]
         return np.sqrt(np.sum((p1-p2)**2))
+
     def filter_experiments(d,loss_fn_name,prog_num):
         return [x for x in d if x["loss"]==loss_fn_name and x["program_id"]==prog_num]
 
-    g = [[get_p_error(x) for x in filter_experiments(d,lfn_name,0)] for lfn_name in lfn_names]
+    g = [[get_p_error(x) for x in filter_experiments(d,lfn_name,program_num)] for lfn_name in lfn_names]
     g = [[2 if isnan(i) else i for i in j ] for j in g]
-    return filter_experiments, g, get_p_error, isnan, nan
+    # g = [[x["Multi_Spec"] for x in filter_experiments(d,lfn_name,program_num)] for lfn_name in lfn_names]
+
+    g = [[float(element) for element in sublist] for sublist in g]
+
+    [len(e) for e in g]
+    return filter_experiments, g, get_p_error
 
 
 @app.cell
-def __(g, lfn_names, np):
-    from scipy import stats
-    import matplotlib.pyplot as plt
-    import seaborn as sns
-    from statsmodels.stats.multicomp import pairwise_tukeyhsd
-
+def __(g, lfn_names, np, pairwise_tukeyhsd, plt, stats):
     data = g
 
     # Perform One-Way ANOVA to test if the means are different
@@ -72,29 +120,7 @@ def __(g, lfn_names, np):
 
     else:
         print("No significant difference between the arrays.")
-    return (
-        F,
-        combined_data,
-        data,
-        group_labels,
-        p_value,
-        pairwise_tukeyhsd,
-        plt,
-        sns,
-        stats,
-        tukey_result,
-    )
-
-
-@app.cell
-def __(g):
-    import scikit_posthocs as sp
-
-    # Perform Dunn's test for multiple comparisons
-    dunn_result = sp.posthoc_dunn(g, p_adjust='bonferroni')
-
-    print(dunn_result)
-    return dunn_result, sp
+    return F, combined_data, data, group_labels, p_value, tukey_result
 
 
 @app.cell
