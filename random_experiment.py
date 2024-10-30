@@ -151,22 +151,39 @@ def __(SAMPLE_RATE, Scattering1D, jnp, loss_helpers, np, softdtw_jax):
 @app.cell
 def __(args):
     from helpers.program_generators import choose_program
+    import random
 
-    var1_range = (50, 1000)
-    var2_range = (1, 120)
-    true_var1 = sum(var1_range)//2
-    true_var2 = sum(var2_range)//2
+    if args.program_id == 0:
+        var1_range = (50, 1000)
+        var2_range = (1, 120)
+        true_var1 = int(random.uniform(var1_range[0], var1_range[1]))
+        true_var2 = int(random.uniform(var2_range[0], var2_range[1]))
+    elif args.program_id == 1:
+        var1_range = (30, 1000)
+        var2_range = (30, 1000)
+        true_var1 = int(random.uniform(var1_range[0], var1_range[1]))
+        true_var2 = int(random.uniform(var2_range[0], var2_range[1]))
+    elif args.program_id == 2:
+        var1_range = (1, 20)
+        var2_range = (10, 1000)
+        true_var1 = int(random.uniform(var1_range[0], var1_range[1]))
+        true_var2 = int(random.uniform(var2_range[0], var2_range[1]))
+    elif args.program_id == 3:
+        var1_range = (1, 20)
+        var2_range = (10, 1000)
+        true_var1 = int(random.uniform(var1_range[0], var1_range[1]))
+        true_var2 = int(random.uniform(var2_range[0], var2_range[1]))
 
-        # prog_code, var1_value, var2_value, var_names = choose_program(args.program_id, var1_range, var2_range)
 
     rand_prog_code, var1_value, var2_value = choose_program(args.program_id, var1_range, var2_range)
     true_prog_code, true_var1_value, true_var2_value = choose_program(args.program_id,var1_range, var2_range,true_var1,true_var2)
-    print("Program 0 Code:\n", true_prog_code)
+    print("Program Code:\n", true_prog_code)
     print("init vars",var1_value,var2_value)
     print("true vars",true_var1_value,true_var2_value)
     return (
         choose_program,
         rand_prog_code,
+        random,
         true_prog_code,
         true_var1,
         true_var1_value,
@@ -305,7 +322,7 @@ def __(
     real_params = {k: [] for k in variable_names}  # will record parameters while searching
     norm_params = {k: [] for k in variable_names}  # will record parameters while searching
 
-    for n in range(100):
+    for n in range(200):
         state, loss = train_step(state)
         if n % 1 == 0:
             audio, mod_vars = instrument_jit(state.params, noise, SAMPLE_RATE)
