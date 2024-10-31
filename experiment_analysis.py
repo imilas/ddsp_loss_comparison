@@ -15,13 +15,17 @@ def __():
     import matplotlib.pyplot as plt
     import seaborn as sns
     from statsmodels.stats.multicomp import pairwise_tukeyhsd
+    import pandas as pd
+    from itertools import combinations
     return (
+        combinations,
         isnan,
         load_json,
         mo,
         nan,
         np,
         pairwise_tukeyhsd,
+        pd,
         plt,
         sns,
         sp,
@@ -140,10 +144,10 @@ def __(g, lfn_names, np, plt, sp):
     # Plot pairwise comparisons with mean differences
     comparisons = []
     mean_diffs = []
-    for i in range(len(g)):
-        for j in range(i+1, len(g)):
-            comparisons.append(f"{lfn_names[i]} vs {lfn_names[j]}")
-            mean_diffs.append(group_means[i] - group_means[j])
+    for ii in range(len(g)):
+        for j in range(ii+1, len(g)):
+            comparisons.append(f"{lfn_names[ii]} vs {lfn_names[j]}")
+            mean_diffs.append(group_means[ii] - group_means[j])
 
     # Create a plot with error bars for each comparison
     plt.figure(figsize=(8, 6))
@@ -154,27 +158,24 @@ def __(g, lfn_names, np, plt, sp):
     plt.xticks(rotation=45)
     plt.tight_layout()
     plt.show()
-    return comparisons, dunn_results, group_means, i, j, mean_diffs
+    return comparisons, dunn_results, group_means, ii, j, mean_diffs
 
 
 @app.cell
-def __(g, lfn_names, np, performance_measure, plt, program_num, sns):
-    import pandas as pd
-    from itertools import combinations
-    from matplotlib.colors import LinearSegmentedColormap
-    # Create DataFrame from `g` and `lfn_names`
+def __(g, lfn_names, np, pd, performance_measure, plt, program_num, sns):
+
+
+    # Convert data and create a DataFrame from `g` and `lfn_names`
     performance_data = {'Category': [], 'Score': []}
     for category, scores in zip(lfn_names, g):
         performance_data['Category'].extend([category] * len(scores))
         performance_data['Score'].extend(scores)
 
     df = pd.DataFrame(performance_data)
-    # Bootstrapping function
+
+    # Bootstrapping function to compute means and confidence intervals
     def bootstrap_means(scores, n_iterations=1000):
-        boot_means = []
-        for _ in range(n_iterations):
-            sample = np.random.choice(scores, size=len(scores)//4, replace=True)
-            boot_means.append(np.mean(sample))
+        boot_means = [np.mean(np.random.choice(scores, size=len(scores) // 2, replace=True)) for _ in range(n_iterations)]
         return boot_means
 
     # Perform bootstrapping for each category
@@ -184,154 +185,100 @@ def __(g, lfn_names, np, performance_measure, plt, program_num, sns):
         category_scores = df[df['Category'] == category]['Score'].values
         boot_means = bootstrap_means(category_scores)
         bootstrapped_data.extend([(category, mean) for mean in boot_means])
-        
-        # Calculate 25th and 75th percentiles
-        p25, p75 = np.percentile(boot_means, [25, 75])
-        percentiles[category] = (p25, p75)
 
-    # Convert to DataFrame for easy plotting
+        # Calculate 95% confidence interval
+        ci_lower, ci_upper = np.percentile(boot_means, [2.5, 97.5])
+        percentiles[category] = (ci_lower, ci_upper)
+
     boot_df = pd.DataFrame(bootstrapped_data, columns=['Category', 'Bootstrapped Mean'])
 
-    # Determine overlapping groups
-    overlapping_groups = {}
-    for (cat1, (p25_1, p75_1)), (cat2, (p25_2, p75_2)) in combinations(percentiles.items(), 2):
-        if (p25_1 <= p75_2 and p75_1 >= p25_2):  # Check for overlap
-            overlapping_groups.setdefault(cat1, set()).add(cat2)
-            overlapping_groups.setdefault(cat2, set()).add(cat1)
+    # Initialize variables to find the best performer
+    best_performer = None
+    lowest_ci_upper = float('inf')
 
-    # Assign colors to groups based on overlap
-    distinct_colors = [
-        "#A50000",  # Dark Red
-        "#005EB8",  # Dark Blue
-        "#007A33",  # Dark Green
-        "#D95F0E"   # Dark Orange
-    ]
+    # Identify the lowest upper confidence interval
+    for category, (ci_lower, ci_upper) in percentiles.items():
+        if ci_upper < lowest_ci_upper:
+            lowest_ci_upper = ci_upper
+            best_performer = category
 
-    color_map = {}
-    assigned_colors = {}
-    current_color_idx = 0
+    # Gather best performers, starting with the identified best performer
+    best_performers = [best_performer]
 
-    # Sort by performance (lower is better)
-    sorted_categories = sorted(percentiles, key=lambda x: percentiles[x][0])
+    # Check for overlaps with other categories
+    for category, (ci_lower, ci_upper) in percentiles.items():
+        if category != best_performer:  # Avoid comparing with itself
+            best_performer_ci_lower = percentiles[best_performer][0]
+            best_performer_ci_upper = percentiles[best_performer][1]
+            # Check if the confidence intervals overlap
+            if ci_lower <= best_performer_ci_upper and ci_upper >= best_performer_ci_lower:
+                best_performers.append(category)
 
-    # Assign colors based on rank
-    for category in sorted_categories:
-        if category not in assigned_colors:
-            # Assign a new color to this category
-            color_map[category] = distinct_colors[current_color_idx]
-            assigned_colors[category] = distinct_colors[current_color_idx]
-            
-            # Assign the same color to all overlapping groups
-            if category in overlapping_groups:
-                for overlapping_category in overlapping_groups[category]:
-                    color_map[overlapping_category] = distinct_colors[current_color_idx]
-                    assigned_colors[overlapping_category] = distinct_colors[current_color_idx]
-            
-            current_color_idx += 1  # Move to the next color
+    # Output the results
+    print("Best Performers:", best_performers)
 
-    # Calculate rankings (with ties)
-    rankings = {}
-    rank_map = {}  # Map to store ranks and handle ties
-    rank = 1
-    last_p25 = None
-
-    # Adjust ranks for categories that share the same color
-    for category in sorted_categories:
-        p25 = percentiles[category][0]
-        if last_p25 is None or p25 > last_p25:
-            rankings[category] = rank
-            rank_map[rank] = [category]  # Initialize a list for categories sharing this rank
-        else:
-            rankings[category] = rank  # Assign same rank for ties
-            rank_map[rank].append(category)  # Append to the list of shared rank
-        last_p25 = p25
-        rank += 1
-
-    # Adjust ranks to ensure overlapping groups have the same rank
-    for group in overlapping_groups:
-        # Get the lowest rank for this group
-        min_rank = min(rankings[category] for category in overlapping_groups[group] | {group})
-        for overlapping_category in overlapping_groups[group] | {group}:
-            rankings[overlapping_category] = min_rank
+    # Define colors for the violin plots
+    color_map = {category: 'blue' if category in best_performers else 'white' for category in df['Category'].unique()}
 
     # Plot
     plt.figure(figsize=(6, 6))
-
     for category in df['Category'].unique():
-        # Create a half violin by multiplying the bootstrapped means by 1 (for right side)
         sns.violinplot(
             y=[category] * len(boot_df[boot_df['Category'] == category]),
             x=boot_df[boot_df['Category'] == category]['Bootstrapped Mean'],
             color=color_map[category],
-            orient='h',  # Horizontal orientation
-            inner='quart',
-            split="false",
-            scale='area'  # Ensure the area is correctly scaled
+            orient='h',
+            inner=None,
+            split=True
         )
 
-    # sns.boxplot(y='Category', x='Bootstrapped Mean', data=boot_df, width=0.1, color="black")
+        # Add a star for best performers in the middle
+        if category in best_performers:
+            mean_value = boot_df[boot_df['Category'] == category]['Bootstrapped Mean'].mean()
+            plt.text(mean_value, category, '*', fontsize=30, color='yellow', ha='center', va='center')  # Make star bigger and yellow
 
-    # Highlight the 25th and 75th percentiles
-    for category in df['Category'].unique():
-        category_means = boot_df[boot_df['Category'] == category]['Bootstrapped Mean']
-        p25, p75 = np.percentile(category_means, [25, 75])
-        plt.scatter([p25, p75], [category] * 2, color='red', marker='o', label='25th/75th Percentile' if category == 'A' else "")
 
-    # Create a legend mapping colors to performance
-    handles = []
-    for category, color in color_map.items():
-        handles.append(plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=color, markersize=10))
-    plt.legend(handles, [f"{category} (Rank {rankings[category]})" for category in color_map.keys()], title="Performance Rank")
+    # Plotting the 95% confidence intervals
+    for idx, category in enumerate(df['Category'].unique()):
+        ci_lower, ci_upper = percentiles[category]
+        
+        # Plot dashed vertical lines for the confidence interval
+        plt.vlines([ci_lower, ci_upper], ymin=idx - 0.4, ymax=idx + 0.4, color='red', linestyle='--', linewidth=2)
 
-    # plt.title("Bootstrapped Means")
-    plt.xlabel("Bootstrapped Mean")  # Add x-label for clarity
-    # plt.ylabel("Loss Function")  # Add y-label for clarity
+    plt.xlabel("Bootstrapped Mean %s" % performance_measure)
+    plt.yticks(rotation=90)
     plt.tight_layout()
-    plt.savefig("./plots/p%d_%s.png"%(program_num,performance_measure),bbox_inches='tight', pad_inches=0, transparent=True)
+    plt.savefig("./plots/p%d_%s.png" % (program_num, performance_measure), bbox_inches='tight', pad_inches=0, transparent=True)
+
     plt.show()
+
     return (
-        LinearSegmentedColormap,
-        assigned_colors,
+        best_performer,
+        best_performer_ci_lower,
+        best_performer_ci_upper,
+        best_performers,
         boot_df,
         boot_means,
         bootstrap_means,
         bootstrapped_data,
-        cat1,
-        cat2,
         category,
-        category_means,
         category_scores,
-        color,
+        ci_lower,
+        ci_upper,
         color_map,
-        combinations,
-        current_color_idx,
         df,
-        distinct_colors,
-        group,
-        handles,
-        last_p25,
-        min_rank,
-        overlapping_category,
-        overlapping_groups,
-        p25,
-        p25_1,
-        p25_2,
-        p75,
-        p75_1,
-        p75_2,
-        pd,
+        idx,
+        lowest_ci_upper,
+        mean_value,
         percentiles,
         performance_data,
-        rank,
-        rank_map,
-        rankings,
         scores,
-        sorted_categories,
     )
 
 
 @app.cell
 def __():
+    # best_performers
     return
 
 
