@@ -45,6 +45,10 @@ def __():
     import json
     import argparse
 
+    import pickle
+    import uuid
+
+
     default_device = "cpu"  # or 'gpu'
     jax.config.update("jax_platform_name", default_device)
 
@@ -74,10 +78,12 @@ def __():
         os,
         partial,
         pd,
+        pickle,
         plt,
         softdtw_jax,
         train_state,
         unfreeze,
+        uuid,
         wavfile,
     )
 
@@ -129,7 +135,6 @@ def __(SAMPLE_RATE, Scattering1D, jnp, loss_helpers, np, softdtw_jax):
 
     # for Multi_Spec loss. Generate spec functions for each NFFT value
     spec_funs = [loss_helpers.return_mel_spec(x, SAMPLE_RATE) for x in [512, 1024, 2048, 4096]]
-
     return (
         HOP_LEN,
         J,
@@ -367,15 +372,16 @@ def __(
     naive_loss,
     norm_params,
     onset_1d,
+    pickle,
+    program_id,
     scat_jax,
     sounds,
     spec_func,
     spec_funs,
     target_sound,
     true_instrument_params,
+    uuid,
 ):
-
-
     # variables that need saving
     experiment["true_params"] = true_instrument_params
     experiment["norm_params"] = norm_params
@@ -383,25 +389,24 @@ def __(
     experiment["L1_Spec"] = naive_loss(spec_func(sounds[-1]), spec_func(target_sound))
     experiment["DTW_Onset"] = dtw_jax(onset_1d(target_sound, kernel, spec_func), onset_1d(sounds[-1], kernel, spec_func))
     experiment["JTFS"] = naive_loss(scat_jax(target_sound), scat_jax(sounds[-1]))
-            
-    # # Specify the path to the JSON file
-    # json_file_path = './results/experiments.json'
-
-    # # Call the function to append to the JSON file
-    # append_to_json(json_file_path, experiment)
-
-    import pickle
-    import uuid
+    experiment["target_sound"] = target_sound
+    experiment["output_sound"] = sounds[-1]
 
     # Generate a random file name
-    file_name = f"./results/{uuid.uuid4()}.pkl"
+    file_name = f"./results/%s_%s_%s.pkl"%(experiment["loss"],program_id,uuid.uuid4())
 
     # Save the dictionary with the random file name
     with open(file_name, "wb") as file:
         pickle.dump(experiment, file)
 
     print(f"File saved as: {file_name}")
-    return file, file_name, pickle, uuid
+    return file, file_name
+
+
+@app.cell
+def __(file_name):
+    file_name
+    return
 
 
 @app.cell

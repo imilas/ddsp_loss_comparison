@@ -1,7 +1,7 @@
 import marimo
 
 __generated_with = "0.5.2"
-app = marimo.App()
+app = marimo.App(width="full")
 
 
 @app.cell
@@ -290,7 +290,7 @@ def __(
     hs = train_sounds[0][0]
 
 
-    scattering = Scattering1D(J=6, shape=44100, Q=8)
+    scattering = Scattering1D(J=1, shape=44100, Q=8)
     scat = scattering(train_sounds[0][0])
 
     jit_scatter = jax.jit(scattering)

@@ -359,7 +359,7 @@ def __(jax_spec, plt):
 @app.cell
 def __(mo):
     mo.md(
-        """here we use the fourier representation of audio to calculate the loss. The loss function is $\sum |d_{i,j}|$ where $d = \chi_x - \chi_y$, $\chi$ is the spectrogram representation, and $x$ is the output of the synthesizer, and $y$ is the sound we're approximating. The dimensions $i$ and $j$ depend on the length of the sound and the parameters of the FFT function.
+        """here we use the fourier representation of audio to calculate the loss. The loss function is $\sum |d_{i,j}|$ where $d = \chi_x - \chi_y$ where $\chi$ is the spectrogram representation, and $x$ is the output of the synthesizer, and $y$ is the sound we're approximating. The dimensions $i$ and $j$ depend on the length of the sound and the parameters of the FFT function.
 
     The issue with this representation is that d is sensetive to the alignment of sounds. If x is a copy of y but offset by a few time-steps, the loss function would return a large value. 
 
@@ -545,6 +545,53 @@ def __(freq_data, jax, jnp, loss_fn_sigdiff, np):
         test_freqs_jitted,
         test_losses,
     )
+
+
+@app.cell
+def __(
+    HTML,
+    SAMPLE_RATE,
+    T,
+    animation,
+    cutoff_data,
+    hidden_automation,
+    mo,
+    np,
+    plt,
+    rc,
+):
+    mo.output.clear()
+    # Initialize the plot for animation
+    fig, ax = plt.subplots(figsize=(8, 4))
+    (line1,) = ax.plot([], [], label="Ground Truth")
+    (line2,) = ax.plot([], [], label="Prediction")
+    ax.set_title("Optimizing a Lowpass Filter's Cutoff")
+    ax.set_ylabel("Cutoff Frequency (Hz)")
+    ax.set_xlabel("Time (sec)")
+    ax.set_ylim(0, SAMPLE_RATE / 2)
+    ax.set_xlim(0, T / SAMPLE_RATE)
+    plt.legend(loc="right")
+    time_axis = np.arange(T) / SAMPLE_RATE
+
+
+    # Function to update the plot for each frame
+    def update_plot(frame):
+        global hidden_automation
+        global cutoff_data
+        line1.set_data(time_axis, hidden_automation[0, 0, :])
+        line2.set_data(time_axis, cutoff_data[frame])
+        return line1, line2
+
+
+    # Creating the animation
+    # from matplotlib import rc
+    rc("animation", html="jshtml")
+    anim = animation.FuncAnimation(
+        fig, update_plot, frames=len(cutoff_data), blit=True
+    )
+    plt.close()
+    HTML(anim.to_html5_video())
+    return anim, ax, fig, line1, line2, time_axis, update_plot
 
 
 if __name__ == "__main__":

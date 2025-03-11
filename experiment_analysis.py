@@ -48,7 +48,7 @@ def __():
     for filename in os.listdir(directory):
         if filename.endswith(".pkl"):
             file_path = os.path.join(directory, filename)
-            
+
             # Load each pickle file and append the data to the list
             with open(file_path, "rb") as file:
                 exp_dictionary= pickle.load(file)
@@ -162,9 +162,7 @@ def __(g, lfn_names, np, plt, sp):
 
 
 @app.cell
-def __(g, lfn_names, np, pd, performance_measure, plt, program_num, sns):
-
-
+def __(g, lfn_names, np, pd, performance_measure, plt, sns):
     # Convert data and create a DataFrame from `g` and `lfn_names`
     performance_data = {'Category': [], 'Score': []}
     for category, scores in zip(lfn_names, g):
@@ -241,17 +239,16 @@ def __(g, lfn_names, np, pd, performance_measure, plt, program_num, sns):
     # Plotting the 95% confidence intervals
     for idx, category in enumerate(df['Category'].unique()):
         ci_lower, ci_upper = percentiles[category]
-        
+
         # Plot dashed vertical lines for the confidence interval
         plt.vlines([ci_lower, ci_upper], ymin=idx - 0.4, ymax=idx + 0.4, color='red', linestyle='--', linewidth=2)
 
     plt.xlabel("Bootstrapped Mean %s" % performance_measure)
     plt.yticks(rotation=90)
     plt.tight_layout()
-    plt.savefig("./plots/p%d_%s.png" % (program_num, performance_measure), bbox_inches='tight', pad_inches=0, transparent=True)
+    # plt.savefig("./plots/p%d_%s.png" % (program_num, performance_measure), bbox_inches='tight', pad_inches=0, transparent=True)
 
     plt.show()
-
     return (
         best_performer,
         best_performer_ci_lower,
@@ -278,7 +275,6 @@ def __(g, lfn_names, np, pd, performance_measure, plt, program_num, sns):
 
 @app.cell
 def __():
-    # best_performers
     return
 
 

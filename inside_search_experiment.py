@@ -224,11 +224,6 @@ def __(
 
 
 @app.cell
-def __():
-    return
-
-
-@app.cell
 def __(dtw_jax, kernel, onset_1d, spec_func, target_sound):
     dtw_jax(onset_1d(target_sound, kernel, spec_func), onset_1d(target_sound, kernel, spec_func))
     return
@@ -313,7 +308,7 @@ def __(
     real_params = {k: [init_params[k]] for k in true_params.keys()}  # will record parameters while searching
     norm_params = {k: [] for k in true_params.keys()}  # will record parameters while searching
 
-    for n in range(2):
+    for n in range(50):
         state, loss = train_step(state)
         if n % 1 == 0:
             audio, mod_vars = instrument_jit(state.params, noise, SAMPLE_RATE)
