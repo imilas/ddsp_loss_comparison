@@ -373,7 +373,6 @@ def __(
     norm_params,
     onset_1d,
     pickle,
-    program_id,
     scat_jax,
     sounds,
     spec_func,
@@ -393,7 +392,7 @@ def __(
     experiment["output_sound"] = sounds[-1]
 
     # Generate a random file name
-    file_name = f"./results/%s_%s_%s.pkl"%(experiment["loss"],program_id,uuid.uuid4())
+    file_name = f"./results/%s_%s_%s.pkl"%(experiment["loss"],experiment["program_id"],uuid.uuid4())
 
     # Save the dictionary with the random file name
     with open(file_name, "wb") as file:

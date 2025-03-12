@@ -11,15 +11,36 @@ DATA_FOLDER = "results/"  # Folder containing .pkl files
 SAVE_FILE = "similarity_ratings.json"
 SAMPLE_RATE = 22050  # Adjust based on your data
 
+# Get all pickle files
+all_pkl_files = sorted([f for f in os.listdir(DATA_FOLDER) if f.endswith(".pkl")])
+
 # Load or initialize ratings
 if os.path.exists(SAVE_FILE):
     with open(SAVE_FILE, "r") as f:
-        ratings = json.load(f)
+        st.session_state.ratings = json.load(f)
 else:
-    ratings = {}
+    st.session_state.ratings = {}
 
-# Get all pickle files
-pkl_files = sorted([f for f in os.listdir(DATA_FOLDER) if f.endswith(".pkl")])
+# Ensure all files are in ratings.json with default value 2
+updated = False
+for pkl_file in all_pkl_files:
+    if pkl_file not in st.session_state.ratings:
+        st.session_state.ratings[pkl_file] = 2
+        updated = True
+
+# Save to file if updates were made
+if updated:
+    with open(SAVE_FILE, "w") as f:
+        json.dump(st.session_state.ratings, f)
+
+# Extract program numbers from filenames (assuming format: *_<program_num>_*.pkl)
+program_numbers = sorted(set(int(f.split("_")[-2]) for f in all_pkl_files))
+
+# Dropdown to select program number
+selected_program = st.selectbox("Select Program Number:", program_numbers)
+
+# Filter files by selected program number
+pkl_files = [f for f in all_pkl_files if f"_{selected_program}_" in f]
 
 st.title("Sound Similarity Survey")
 
@@ -30,6 +51,11 @@ def array_to_wav(audio_array, sample_rate=22050):
     wav_buffer = io.BytesIO()
     write(wav_buffer, sample_rate, audio_array)
     return wav_buffer.getvalue()
+
+def save_ratings():
+    """Save ratings to JSON file whenever updated."""
+    with open(SAVE_FILE, "w") as f:
+        json.dump(st.session_state.ratings, f)
 
 for pkl_file in pkl_files:
     # Load data from pickle file
@@ -59,20 +85,16 @@ for pkl_file in pkl_files:
     st.audio(output_wav, format="audio/wav")
 
     # Load previous rating if available
-    prev_rating = ratings.get(pkl_file, 50)
+    prev_rating = st.session_state.ratings[pkl_file]
 
     # Unique slider key (Fixes Duplicate ID Error)
     similarity = st.slider(
         f"Similarity Score for {pkl_file}",  
-        0, 100, prev_rating, key=pkl_file
+        0, 4, prev_rating, key=f"slider_{pkl_file}", step=1
     )
 
-    # Save the rating
-    ratings[pkl_file] = similarity
-
-# Save ratings when button is clicked
-if st.button("Save Ratings"):
-    with open(SAVE_FILE, "w") as f:
-        json.dump(ratings, f)
-    st.success("Ratings saved!")
+    # Save rating if changed
+    if similarity != st.session_state.ratings[pkl_file]:
+        st.session_state.ratings[pkl_file] = similarity
+        save_ratings()  # Auto-save whenever a slider is adjusted
 
