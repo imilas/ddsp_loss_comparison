@@ -273,10 +273,5 @@ def __(g, lfn_names, np, pd, performance_measure, plt, sns):
     )
 
 
-@app.cell
-def __():
-    return
-
-
 if __name__ == "__main__":
     app.run()

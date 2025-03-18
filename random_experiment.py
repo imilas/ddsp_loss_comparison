@@ -169,9 +169,9 @@ def __(args):
         true_var1 = int(random.uniform(var1_range[0], var1_range[1]))
         true_var2 = int(random.uniform(var2_range[0], var2_range[1]))
     elif args.program_id == 2:
-        var1_range = (1, 20)
-        var2_range = (10, 1000)
-        true_var1 = int(random.uniform(var1_range[0], var1_range[1]))
+        var1_range = (0.1, 1)
+        var2_range = (1, 20)
+        true_var1 = random.uniform(var1_range[0], var1_range[1])
         true_var2 = int(random.uniform(var2_range[0], var2_range[1]))
     elif args.program_id == 3:
         var1_range = (1, 20)
