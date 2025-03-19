@@ -52,6 +52,9 @@ def __():
             # Load each pickle file and append the data to the list
             with open(file_path, "rb") as file:
                 exp_dictionary= pickle.load(file)
+                # Remove sounds
+                exp_dictionary.pop("target_sound", None)
+                exp_dictionary.pop("output_sound", None)
                 d.append(exp_dictionary)
 
     # d = [e for e in d if "Multi_Spec" in e]
