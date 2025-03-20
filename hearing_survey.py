@@ -103,4 +103,3 @@ for pkl_file in pkl_files:
     if similarity != ratings.get(pkl_file):
         ratings[pkl_file] = similarity
         save_ratings()  # Auto-save on change
-
