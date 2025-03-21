@@ -12,5 +12,5 @@ requirements:
     - dynamic time warping (py-dtw)
     - PIX (for ssim with jax)
     - streamlit (for survey)
-
+    - scikit-posthocs (for CI digrams)
 # How to run experiments

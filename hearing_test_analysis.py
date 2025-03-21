@@ -8,89 +8,121 @@ app = marimo.App(width="full")
 def __():
     import json
     import pandas as pd
-    import seaborn as sns
-    import matplotlib.pyplot as plt
     import numpy as np
+    import os
+    import scikit_posthocs as sp
+    import matplotlib.pyplot as plt
+    from itertools import combinations
+    from scipy.stats import mannwhitneyu
+    import seaborn as sns
 
-    # Load similarity ratings JSON
-    SAVE_FILE = "similarity_ratings.json"
-    with open(SAVE_FILE, "r") as f:
-        ratings = json.load(f)
 
-    def select_by_program_and_create_df(ratings, program_number):
-        # Create a list to store function names and Likert scores
+    # List of similarity rating JSON files
+    JSON_FILES = ["survey_results/similarity_ratings_a1.json", "survey_results/similarity_ratings_a2.json"]
+
+    def load_ratings_from_files(json_files):
+        """Load similarity ratings from multiple JSON files and combine them into a DataFrame."""
         data = []
 
-        # Iterate over the ratings dictionary
-        for key, score in ratings.items():
-            # Split the key to extract the program number
-            parts = key.split("_")
-            program_id = int(parts[-2])  # The second to last element is the program number
+        for responder_id, file in enumerate(json_files, start=1):
+            if os.path.exists(file):
+                with open(file, "r") as f:
+                    ratings = json.load(f)
 
-            # If the program number matches the input, process the key
-            if program_id == program_number:
-                # Extract the function name
-                base_name = "_".join(parts[:2])
+                # Process each entry in the JSON data
+                for key, score in ratings.items():
+                    parts = key.split("_")
+                    program_id = int(parts[-2])  # Extract program number
+                    function_name = "_".join(parts[:-2])  # Keep full function name
 
-                # Remove numbers from the end of function names like "JTFS_1"
-                if base_name.startswith("JTFS"):
-                    base_name = "JTFS"
+                    data.append([function_name, program_id, score, responder_id,key])
 
-                # Append the function name and score to the data list
-                data.append([base_name, score])
-        
-        # Create a DataFrame from the data list
-        df = pd.DataFrame(data, columns=["Function", "Score"])
-        
+        # Create DataFrame
+        df = pd.DataFrame(data, columns=["Function", "Program", "Score", "Responder","sound_file"])
         return df
 
-    # Example usage: Select ratings for program 1 and create the DataFrame
-    program_number = 0
-    df = select_by_program_and_create_df(ratings, program_number)
+    # Load data
+    df = load_ratings_from_files(JSON_FILES)
 
     # Print the resulting DataFrame
     print(df)
 
+    # Bootstrapping function to compute means and confidence intervals
+    def bootstrap_means(scores, n_iterations=100):
+        boot_means = [np.mean(np.random.choice(scores, size=len(scores), replace=True)) for _ in range(n_iterations)]
+        return boot_means
+
     return (
-        SAVE_FILE,
+        JSON_FILES,
+        bootstrap_means,
+        combinations,
         df,
-        f,
         json,
+        load_ratings_from_files,
+        mannwhitneyu,
         np,
+        os,
         pd,
         plt,
-        program_number,
-        ratings,
-        select_by_program_and_create_df,
         sns,
+        sp,
     )
 
 
 @app.cell
-def __(df, np, pd, plt, sns):
-
-    from scipy.stats import mannwhitneyu
-    from itertools import combinations
-
-    # Bootstrapping function to compute means and confidence intervals
-    def bootstrap_means(scores, n_iterations=1000):
-        boot_means = [np.mean(np.random.choice(scores, size=len(scores) // 1, replace=True)) for _ in range(n_iterations)]
-        return boot_means
-
+def __(bootstrap_means, df, np, pd):
     # Perform bootstrapping for each function
     bootstrapped_data = []
     percentiles = {}
-    for function in df['Function'].unique():
-        function_scores = df[df['Function'] == function]['Score'].values
+    for f in df['Function'].unique():
+        function_scores = df[df['Function'] == f]['Score'].values
         boot_means = bootstrap_means(function_scores)
-        bootstrapped_data.extend([(function, mean) for mean in boot_means])
+        bootstrapped_data.extend([(i,f, mean) for i,mean in enumerate(boot_means)])
 
         # Calculate 80% confidence interval (10th and 90th percentiles)
         ci_lower, ci_upper = np.percentile(boot_means, [10, 90])
-        percentiles[function] = (ci_lower, ci_upper)
+        percentiles[f] = (ci_lower, ci_upper)
+    boot_df = pd.DataFrame(bootstrapped_data, columns=["cv",'Function', 'Score'])
+    print(boot_df)
 
-    boot_df = pd.DataFrame(bootstrapped_data, columns=['Function', 'Bootstrapped Mean'])
+    return (
+        boot_df,
+        boot_means,
+        bootstrapped_data,
+        ci_lower,
+        ci_upper,
+        f,
+        function_scores,
+        percentiles,
+    )
 
+
+@app.cell
+def __(df, plt, sp):
+    # data = boot_df
+    data = df
+    data = data[data["Program"] == 0]
+    data["cv"] = data.groupby("Function").cumcount()
+    avg_rank = data.groupby('cv').Score.rank(pct=True).groupby(data.Function).mean()
+    print(avg_rank)
+    test_results = sp.posthoc_conover_friedman(
+        data,
+        melted=True,
+        block_col='cv',
+        group_col='Function',
+        y_col='Score',
+    )
+    print(test_results)
+    # sp.sign_plot(test_results)
+    plt.figure(figsize=(10, 2), dpi=100)
+    plt.title('Critical difference diagram of average score ranks')
+    sp.critical_difference_diagram(avg_rank, test_results)
+    plt.show()
+    return avg_rank, data, test_results
+
+
+@app.cell
+def __(boot_df, combinations, df, mannwhitneyu, percentiles, plt, sns):
     # Identify the best performer based on the highest **upper** confidence bound
     best_performer = max(percentiles, key=lambda f: percentiles[f][1])  # Highest upper bound
     best_performers = [best_performer]
@@ -110,8 +142,8 @@ def __(df, np, pd, plt, sns):
     significant_differences = []
 
     for f1, f2 in combinations(df["Function"].unique(), 2):
-        dist1 = boot_df[boot_df["Function"] == f1]["Bootstrapped Mean"]
-        dist2 = boot_df[boot_df["Function"] == f2]["Bootstrapped Mean"]
+        dist1 = boot_df[boot_df["Function"] == f1]["Score"]
+        dist2 = boot_df[boot_df["Function"] == f2]["Score"]
 
         stat, p = mannwhitneyu(dist1, dist2, alternative='greater')  # Test if f1 > f2
 
@@ -130,7 +162,7 @@ def __(df, np, pd, plt, sns):
     for function in df['Function'].unique():
         sns.violinplot(
             y=[function] * len(boot_df[boot_df['Function'] == function]),
-            x=boot_df[boot_df['Function'] == function]['Bootstrapped Mean'],
+            x=boot_df[boot_df['Function'] == function]['Score'],
             color=color_map[function],
             orient='h',
             inner=None,
@@ -139,44 +171,32 @@ def __(df, np, pd, plt, sns):
 
         # Add a star for best performers
         if function in best_performers:
-            mean_value = boot_df[boot_df['Function'] == function]['Bootstrapped Mean'].mean()
+            mean_value = boot_df[boot_df['Function'] == function]['Score'].mean()
             plt.text(mean_value, function, '*', fontsize=30, color='yellow', ha='center', va='center')
 
-    # Plot 80% confidence intervals
-    for idx, function in enumerate(df['Function'].unique()):
-        ci_lower, ci_upper = percentiles[function]
-        plt.vlines([ci_lower, ci_upper], ymin=idx - 0.4, ymax=idx + 0.4, color='red', linestyle='--', linewidth=2)
+    # # Plot 80% confidence intervals
+    # for idx, function in enumerate(df['Function'].unique()):
+    #     ci_lower, ci_upper = percentiles[function]
+    #     plt.vlines([ci_lower, ci_upper], ymin=idx - 0.4, ymax=idx + 0.4, color='red', linestyle='--', linewidth=2)
 
-    plt.xlabel("Bootstrapped Mean Likert Score")
+    plt.xlabel("Score Likert Score")
     plt.yticks(rotation=90)
     plt.tight_layout()
     plt.show()
-
     return (
         alpha,
         best_performer,
         best_performer_ci,
         best_performers,
-        boot_df,
-        boot_means,
-        bootstrap_means,
-        bootstrapped_data,
         ci,
-        ci_lower,
-        ci_upper,
         color_map,
-        combinations,
         dist1,
         dist2,
         f1,
         f2,
         function,
-        function_scores,
-        idx,
-        mannwhitneyu,
         mean_value,
         p,
-        percentiles,
         significant_differences,
         stat,
     )
