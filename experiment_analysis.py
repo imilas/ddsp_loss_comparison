@@ -35,6 +35,26 @@ def __():
 
 @app.cell
 def __():
+    import rpy2.robjects.packages as rpackages
+    from rpy2.robjects.vectors import StrVector  # R vector of strings
+
+    utils = rpackages.importr("utils")
+    utils.chooseCRANmirror(ind=1)  # select the first mirror in the list
+
+    # R package names
+    packnames = ["ScottKnottESD"]
+
+    # Selectively install what needs to be installed.
+    names_to_install = [x for x in packnames if not rpackages.isinstalled(x)]
+    print(f"packages to install: {names_to_install}")
+
+    if len(names_to_install) > 0:
+        utils.install_packages(StrVector(names_to_install))
+    return StrVector, names_to_install, packnames, rpackages, utils
+
+
+@app.cell
+def __():
     import os
     import pickle
 
@@ -74,7 +94,7 @@ def __():
 @app.cell
 def __():
     lfn_names = ['DTW_Onset','L1_Spec' ,'SIMSE_Spec', 'JTFS']
-    program_num = 0
+    program_num = 2
     performance_measure = "MSS"
     # performance_measure = "P-Loss"
     return lfn_names, performance_measure, program_num
@@ -165,7 +185,7 @@ def __(g, lfn_names, np, plt, sp):
 
 
 @app.cell
-def __(g, lfn_names, np, pd, performance_measure, plt, sns):
+def __(g, lfn_names, np, pd, performance_measure, plt, program_num, sns):
     # Convert data and create a DataFrame from `g` and `lfn_names`
     performance_data = {'Category': [], 'Score': []}
     for category, scores in zip(lfn_names, g):
@@ -175,8 +195,8 @@ def __(g, lfn_names, np, pd, performance_measure, plt, sns):
     df = pd.DataFrame(performance_data)
 
     # Bootstrapping function to compute means and confidence intervals
-    def bootstrap_means(scores, n_iterations=1000):
-        boot_means = [np.mean(np.random.choice(scores, size=len(scores) // 2, replace=True)) for _ in range(n_iterations)]
+    def bootstrap_means(scores, n_iterations=200):
+        boot_means = [np.mean(np.random.choice(scores, size=len(scores) , replace=True)) for _ in range(n_iterations)]
         return boot_means
 
     # Perform bootstrapping for each category
@@ -188,7 +208,7 @@ def __(g, lfn_names, np, pd, performance_measure, plt, sns):
         bootstrapped_data.extend([(category, mean) for mean in boot_means])
 
         # Calculate 95% confidence interval
-        ci_lower, ci_upper = np.percentile(boot_means, [2.5, 97.5])
+        ci_lower, ci_upper = np.percentile(boot_means, [5, 95])
         percentiles[category] = (ci_lower, ci_upper)
 
     boot_df = pd.DataFrame(bootstrapped_data, columns=['Category', 'Bootstrapped Mean'])
@@ -249,7 +269,7 @@ def __(g, lfn_names, np, pd, performance_measure, plt, sns):
     plt.xlabel("Bootstrapped Mean %s" % performance_measure)
     plt.yticks(rotation=90)
     plt.tight_layout()
-    # plt.savefig("./plots/p%d_%s.png" % (program_num, performance_measure), bbox_inches='tight', pad_inches=0, transparent=True)
+    plt.savefig("./plots/p%d_%s.png" % (program_num, performance_measure), bbox_inches='tight', pad_inches=0, transparent=True)
 
     plt.show()
     return (
