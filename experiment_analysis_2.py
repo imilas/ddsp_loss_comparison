@@ -74,7 +74,7 @@ def __():
 @app.cell
 def __():
     lfn_names = ['DTW_Onset','L1_Spec' ,'SIMSE_Spec', 'JTFS']
-    program_num = 3
+    program_num = 1
     performance_measure = "MSS"
     # performance_measure = "P-Loss"
     return lfn_names, performance_measure, program_num
@@ -115,7 +115,7 @@ def __(g, lfn_names, np, pd):
 
     # Bootstrapping function to compute means and confidence intervals
     def bootstrap_means(scores, n_iterations=1000):
-        boot_means = [1/np.mean(np.random.choice(scores, size=len(scores) , replace=True)) for _ in range(n_iterations)]
+        boot_means = [1/np.mean(np.random.choice(scores, size=len(scores)//2, replace=True)) for _ in range(n_iterations)]
         return boot_means
 
     # Perform bootstrapping for each category
@@ -178,35 +178,18 @@ def __(boot_df, np, pd, performance_measure, plt, program_num, sns):
 
     # Merge rankings
     plot_data = plot_data.merge(sk_ranks, on="Model")
-    plot_data = plot_data.sort_values(["Rank","Model"])
-    # Set color palette for ranks
-    unique_ranks = sorted(plot_data["Rank"].unique())
-    rank_palette = dict(zip(unique_ranks, sns.color_palette("Blues", len(unique_ranks))))
-
-    # Create the boxplot
-    # plt.figure(figsize=(10, 6))
+    plot_data = plot_data.sort_values(["Model"])
 
 
-    fp = sns.FacetGrid(plot_data,col="Rank",sharey=True,sharex=False,height=4,aspect=0.75,)
+    fp = sns.FacetGrid(plot_data,col="Rank",sharey=True,sharex=False,height=4,aspect=0.5,)
     fp.map_dataframe(
         sns.boxplot,
         x="Model",
         y="Inverse Loss",
-        # order=["Rank-1", "Rank-2", "Rank-3", "Rank-4"],  # Adjust to match your data
-        palette="Blues"
-        
-      
     )
 
-    # Adjustments
-    # plt.xticks(rotation=45)
-    # plt.ylim(0, 1)
     fp.set(xlabel=None,)
-    # plt.xlabel("Model")
-    # plt.ylabel("Inverse Loss")
-    # plt.title("Scott-Knott ESD Rankings (Placeholder Data)")
-    # plt.legend(title="Rank", loc="upper right")
-    # plt.grid(True)
+
     plt.tight_layout()
     plt.savefig("./plots/npsk_%s_%d.png" % (performance_measure,program_num), bbox_inches='tight', pad_inches=0, transparent=True)
     plt.show()
@@ -217,12 +200,16 @@ def __(boot_df, np, pd, performance_measure, plt, program_num, sns):
         pandas2ri,
         plot_data,
         r_data,
-        rank_palette,
         sk,
         sk_ranks,
         sk_results,
-        unique_ranks,
     )
+
+
+@app.cell
+def __(plot_data):
+    plot_data
+    return
 
 
 if __name__ == "__main__":
