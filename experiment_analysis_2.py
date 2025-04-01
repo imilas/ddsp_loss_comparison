@@ -74,9 +74,9 @@ def __():
 @app.cell
 def __():
     lfn_names = ['DTW_Onset','L1_Spec' ,'SIMSE_Spec', 'JTFS']
-    program_num = 1
+    program_num = 0
     performance_measure = "MSS"
-    # performance_measure = "P-Loss"
+    performance_measure = "P-Loss"
     return lfn_names, performance_measure, program_num
 
 
@@ -207,8 +207,8 @@ def __(boot_df, np, pd, performance_measure, plt, program_num, sns):
 
 
 @app.cell
-def __(plot_data):
-    plot_data
+def __(model_performance_df):
+    model_performance_df
     return
 
 
