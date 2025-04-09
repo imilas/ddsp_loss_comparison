@@ -76,7 +76,7 @@ def __():
     lfn_names = ['DTW_Onset','L1_Spec' ,'SIMSE_Spec', 'JTFS']
     program_num = 0
     performance_measure = "MSS"
-    performance_measure = "P-Loss"
+    # performance_measure = "P-Loss"
     return lfn_names, performance_measure, program_num
 
 
@@ -125,7 +125,7 @@ def __(g, lfn_names, np, pd):
         category_scores = df[df['Category'] == category]['Score'].values
         boot_means = bootstrap_means(category_scores)
         bootstrapped_data.extend([(category, mean, i) for i,mean in enumerate(boot_means)])
-        
+
 
         # Calculate 95% confidence interval
         ci_lower, ci_upper = np.percentile(boot_means, [5, 95])
@@ -149,7 +149,7 @@ def __(g, lfn_names, np, pd):
 
 
 @app.cell
-def __(boot_df, np, pd, performance_measure, plt, program_num, sns):
+def __(boot_df, np, pd, plt, sns):
     from rpy2.robjects.packages import importr
     from rpy2.robjects import pandas2ri
 
@@ -170,7 +170,7 @@ def __(boot_df, np, pd, performance_measure, plt, program_num, sns):
     # Extract rankings
     sk_ranks = pd.DataFrame({
         "Model": sk_results.rx2("nms")[[x-1 for x in list(sk_results.rx2("ord"))]],
-        "Rank": [ str(rank) for rank in list(sk_results.rx2("groups"))]
+        "Rank": [ int(rank) for rank in list(sk_results.rx2("groups"))]
     })
 
     # Convert DataFrame to long format for Seaborn
@@ -191,7 +191,7 @@ def __(boot_df, np, pd, performance_measure, plt, program_num, sns):
     fp.set(xlabel=None,)
 
     plt.tight_layout()
-    plt.savefig("./plots/npsk_%s_%d.png" % (performance_measure,program_num), bbox_inches='tight', pad_inches=0, transparent=True)
+    # plt.savefig("./plots/npsk_%s_%d.png" % (performance_measure,program_num), bbox_inches='tight', pad_inches=0, transparent=True)
     plt.show()
     return (
         fp,
@@ -204,6 +204,77 @@ def __(boot_df, np, pd, performance_measure, plt, program_num, sns):
         sk_ranks,
         sk_results,
     )
+
+
+@app.cell
+def __(plot_data):
+    plot_data
+    return
+
+
+@app.cell
+def __(performance_measure, plot_data, program_num):
+    import plotly.graph_objects as go
+
+    # Sort models alphabetically
+    model_order = sorted(plot_data["Model"].unique())
+
+    # Rank-to-color mapping
+    rank_palette = {
+        1: "#00FF00",
+        2: "#202020",
+        3: "#606060",
+        4: "#909090"
+    }
+
+    # Create the figure manually, one half-violin per model
+    fig = go.Figure()
+
+    for model in model_order:
+        sub_df = plot_data[plot_data["Model"] == model]
+        rank = int(sub_df["Rank"].iloc[0])
+        color = rank_palette[rank]
+
+        fig.add_trace(go.Violin(
+            x=sub_df["Inverse Loss"],
+            y=[model] * len(sub_df),
+            orientation="h",
+            name=model,
+            line_color=color,
+            fillcolor=color,
+            box_visible=False,
+            meanline_visible=False,
+            side="positive",  # <-- half violin
+            points="outliers",
+            marker=dict(color=color, outliercolor=color, line=dict(color=color)),
+            width=0.6
+        ))
+
+
+    # Minimal layout
+    fig.update_layout(
+        # xaxis_title="Bootstrapped Inverse "+ performance_measure,
+        xaxis=dict(
+            side="top",  # <- move title to the top
+            showticklabels=False,
+            title_standoff=1  # spacing from the axis
+        ),
+        yaxis=dict(
+            showticklabels=False  # hides the y-axis tick labels (model names)
+        ),
+        showlegend=False,
+        # xaxis_title=None,
+        yaxis_title=None,
+        title=None,
+        margin=dict(l=5, r=5, t=5, b=5),
+        width=250,
+        height=125
+    )
+
+    # Save the figure as a PDF
+    fig.write_image("./plots/npsk_%s_%d.png" % (performance_measure,program_num), engine="kaleido",scale=5)
+    fig.show()
+    return color, fig, go, model, model_order, rank, rank_palette, sub_df
 
 
 @app.cell

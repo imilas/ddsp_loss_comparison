@@ -46,7 +46,6 @@ def __():
 
     # Print the resulting DataFrame
     print(df)
-
     return (
         JSON_FILES,
         combinations,
@@ -68,7 +67,6 @@ def __():
 @app.cell
 def __(mo):
     mo.md("# D Responsers Agree? We calculate the spearman coeff")
-
     return
 
 
@@ -110,19 +108,19 @@ def __():
 def __(df, np, pd):
     # Bootstrapping function to compute means and confidence intervals
     def bootstrap_means(scores, n_iterations=1000):
-        boot_means = [np.mean(np.random.choice(scores, size=len(scores)//2, replace=True)) for _ in range(n_iterations)]
+        boot_means = [np.mean(np.random.choice(scores, size=len(scores), replace=True)) for _ in range(n_iterations)]
         return boot_means
 
     # Perform bootstrapping for each category
     bootstrapped_data = []
     percentiles = {}
-    program_num = 2
+    program_num = 0
 
     for category in df['Function'].unique():
         category_scores = df[ (df["Program"]==program_num) &  (df['Function'] == category) ]['Score'].values
         boot_means = bootstrap_means(category_scores)
         bootstrapped_data.extend([(category, mean, i) for i,mean in enumerate(boot_means)])
-        
+
     boot_df = pd.DataFrame(bootstrapped_data, columns=['Category', 'Bootstrapped Mean',"cv"])
 
 
@@ -161,7 +159,7 @@ def __(boot_df, np, pd, plt, sns):
     # Extract rankings
     sk_ranks = pd.DataFrame({
         "Model": sk_results.rx2("nms")[[x-1 for x in list(sk_results.rx2("ord"))]],
-        "Rank": [ str(rank) for rank in list(sk_results.rx2("groups"))]
+        "Rank": [ int(rank) for rank in list(sk_results.rx2("groups"))]
     })
 
     # Convert DataFrame to long format for Seaborn
@@ -198,78 +196,76 @@ def __(boot_df, np, pd, plt, sns):
 
 
 @app.cell
-def __():
+def __(plot_data):
+    plot_data
     return
 
 
 @app.cell
-def __(plot_data, plt, program_num, sk_ranks, sns):
-    import matplotlib.patches as mpatches
+def __(plot_data, program_num):
+    import plotly.graph_objects as go
 
-    # Set up the color palette based on unique ranks
+    # Sort models alphabetically
+    model_order = sorted(plot_data["Model"].unique())
 
-    num_ranks = len(plot_data["Rank"].unique())
-    colors = ["#00FF00", "#555555",  "#999999",  "#BBBBBB"][0:num_ranks]
-    ranks = ["1.0","2.0","3.0","4.0"][0:num_ranks]
-    # # Set up the color palette based on unique ranks
-    rank_palette = dict(zip(ranks,colors))
+    # Rank-to-color mapping
+    rank_palette = {
+        1: "#00FF00",
+        2: "#202020",
+        3: "#606060",
+        4: "#909090"
+    }
 
+    # Create the figure manually, one half-violin per model
+    fig = go.Figure()
 
-    # Create the plot
-    plt.figure(figsize=(8, 6))
-    ax = sns.boxplot(
-        data=plot_data,
-        x="Model",
-        y="Score",
-        hue="Rank",
-        palette=rank_palette,
-        hue_order=["1.0", "2.0", "3.0", "4.0"][0:num_ranks]  # Ensure legend order
+    for model in model_order:
+        sub_df = plot_data[plot_data["Model"] == model]
+        rank = int(sub_df["Rank"].iloc[0])
+        color = rank_palette[rank]
+
+        fig.add_trace(go.Violin(
+            x=sub_df["Score"],
+            y=[model] * len(sub_df),
+            orientation="h",
+            name=model,
+            line_color=color,
+            fillcolor=color,
+            box_visible=False,
+            meanline_visible=False,
+            side="positive",  # <-- half violin
+            points="outliers",
+            marker=dict(color=color, outliercolor=color, line=dict(color=color)),
+            width=0.6
+        ))
+
+    # Minimal layout
+    fig.update_layout(
+        # xaxis_title="Bootstrapped Likert Score",
+        xaxis=dict(
+            side="top",  # <- move title to the top
+            title_standoff=1,  # spacing from the axis
+            showticklabels=False
+        ),
+            yaxis=dict(
+            showticklabels=False  # hides the y-axis tick labels (model names)
+        ),
+        showlegend=False,
+        yaxis_title=None,
+        title=None,
+        margin=dict(l=5, r=5, t=5, b=5),
+        width=250,
+        height=125
     )
 
-    # Define hatches
-    hatches = [["*", "o", "+", "x"][int(float(x))-1] for x in sk_ranks.sort_values("Rank",ascending=True)["Rank"]]
-    for hatch, patch in zip(hatches, ax.patches):
-        patch.set_hatch(hatch)
-
-    # Create proxy artists for the legend
-    legend_handles = []
-    for i, (hatch, color) in enumerate(zip(hatches, rank_palette.values())):
-        patch = mpatches.Patch(facecolor='none', edgecolor=color, hatch=hatch, label=f'Rank {list(rank_palette.keys())[i]}')
-        legend_handles.append(patch)
-
-    # Add custom legend with larger symbols
-    plt.xlabel("Model")
-    plt.ylabel("Bootstrapped Mean Likert Score")
-    plt.xticks(rotation=0)
-    plt.legend(handles=legend_handles, title="Rank", loc='upper right', markerscale=2, fontsize=12)
-    plt.grid(axis='y')
-
-    plt.tight_layout()
-
-    plt.savefig("./plots/npsk_likert_%d.png" % (program_num), bbox_inches='tight', pad_inches=0, transparent=True)
-    plt.show()
-
-
-
-    return (
-        ax,
-        color,
-        colors,
-        hatch,
-        hatches,
-        i,
-        legend_handles,
-        mpatches,
-        num_ranks,
-        patch,
-        rank_palette,
-        ranks,
-    )
+    # Save the figure as a PDF
+    fig.write_image("./plots/npsk_likert_%d.png" % (program_num), engine="kaleido",scale=5)
+    fig.show()
+    return color, fig, go, model, model_order, rank, rank_palette, sub_df
 
 
 @app.cell
-def __(hatches):
-    hatches 
+def __():
     return
 
 
