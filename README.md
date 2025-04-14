@@ -13,4 +13,5 @@ requirements:
     - PIX (for ssim with jax)
     - streamlit (for survey)
     - scikit-posthocs (for CI digrams)
+    - kaleido
 # How to run experiments

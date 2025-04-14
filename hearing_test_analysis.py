@@ -71,11 +71,20 @@ def __(mo):
 
 
 @app.cell
+def __(df):
+    df
+    return
+
+
+@app.cell
 def __(df, scipy):
-    from itertools import product
-    matched_responses = [df[df.Responder == x].sort_values("sound_file")["Score"].values for x in df.Responder.unique()]
-    print([scipy.stats.spearmanr(x,y) for x,y in product(matched_responses, repeat=2)][1]) # this line is written in case there's more responders
-    return matched_responses, product
+    def match_and_spearman(df,group_name="all"):
+        matched_responses = [df[df.Responder == x].sort_values("sound_file")["Score"].values for x in df.Responder.unique()]
+        print("spearman for %s"%group_name, scipy.stats.spearmanr(matched_responses[1],matched_responses[0]))
+    match_and_spearman(df)
+    # per program spearman r
+    df.groupby(["Program"]).apply(lambda x: match_and_spearman(x,x.name))
+    return match_and_spearman,
 
 
 @app.cell
@@ -114,8 +123,7 @@ def __(df, np, pd):
     # Perform bootstrapping for each category
     bootstrapped_data = []
     percentiles = {}
-    program_num = 0
-
+    program_num = 2
     for category in df['Function'].unique():
         category_scores = df[ (df["Program"]==program_num) &  (df['Function'] == category) ]['Score'].values
         boot_means = bootstrap_means(category_scores)
@@ -210,10 +218,10 @@ def __(plot_data, program_num):
 
     # Rank-to-color mapping
     rank_palette = {
-        1: "#00FF00",
-        2: "#202020",
-        3: "#606060",
-        4: "#909090"
+        1: "#70FF70",
+        2: "#858585",
+        3: "#454545",
+        4: "#000000"
     }
 
     # Create the figure manually, one half-violin per model
@@ -241,11 +249,14 @@ def __(plot_data, program_num):
 
     # Minimal layout
     fig.update_layout(
-        # xaxis_title="Bootstrapped Likert Score",
         xaxis=dict(
             side="top",  # <- move title to the top
-            title_standoff=1,  # spacing from the axis
-            showticklabels=False
+            tickfont=dict(
+                family="JetBrainsMono Nerd Font Mono",  # Bold font
+                size=16,
+                color="black"
+            )
+            
         ),
             yaxis=dict(
             showticklabels=False  # hides the y-axis tick labels (model names)
@@ -253,9 +264,10 @@ def __(plot_data, program_num):
         showlegend=False,
         yaxis_title=None,
         title=None,
-        margin=dict(l=5, r=5, t=5, b=5),
+        
+        margin=dict(l=0, r=0, t=0, b=0), 
         width=250,
-        height=125
+        height=175
     )
 
     # Save the figure as a PDF
@@ -266,6 +278,17 @@ def __(plot_data, program_num):
 
 @app.cell
 def __():
+    # from PIL import Image
+    # # import matplotlib.pyplot as plt
+
+    # # Open the image
+    # img = Image.open('plots/npsk_likert_2.png')
+
+    # # Convert to greyscale
+    # gray_img = img.convert('L')
+
+    # img.show()
+    # gray_img.show()
     return
 
 

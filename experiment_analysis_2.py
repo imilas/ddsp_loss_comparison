@@ -74,10 +74,16 @@ def __():
 @app.cell
 def __():
     lfn_names = ['DTW_Onset','L1_Spec' ,'SIMSE_Spec', 'JTFS']
-    program_num = 0
+    program_num = 1
     performance_measure = "MSS"
     # performance_measure = "P-Loss"
     return lfn_names, performance_measure, program_num
+
+
+@app.cell
+def __(d):
+    d[0]
+    return
 
 
 @app.cell
@@ -101,6 +107,12 @@ def __(d, isnan, lfn_names, np, performance_measure, program_num):
 
     [len(e) for e in g]
     return filter_experiments, g, get_p_error
+
+
+@app.cell
+def __(g):
+    g
+    return
 
 
 @app.cell
@@ -221,10 +233,10 @@ def __(performance_measure, plot_data, program_num):
 
     # Rank-to-color mapping
     rank_palette = {
-        1: "#00FF00",
-        2: "#202020",
-        3: "#606060",
-        4: "#909090"
+        1: "#70FF70",
+        2: "#858585",
+        3: "#454545",
+        4: "#000000"
     }
 
     # Create the figure manually, one half-violin per model
@@ -250,27 +262,29 @@ def __(performance_measure, plot_data, program_num):
             width=0.6
         ))
 
-
     # Minimal layout
     fig.update_layout(
-        # xaxis_title="Bootstrapped Inverse "+ performance_measure,
         xaxis=dict(
             side="top",  # <- move title to the top
-            showticklabels=False,
-            title_standoff=1  # spacing from the axis
+            tickfont=dict(
+                family="JetBrainsMono Nerd Font Mono",  # Bold font
+                size=16,
+                color="black"
+            )
+            
         ),
-        yaxis=dict(
+            yaxis=dict(
             showticklabels=False  # hides the y-axis tick labels (model names)
         ),
         showlegend=False,
-        # xaxis_title=None,
         yaxis_title=None,
         title=None,
-        margin=dict(l=5, r=5, t=5, b=5),
+        
+        margin=dict(l=0.1, r=0.1, t=0, b=0), 
+        # template="seaborn",
         width=250,
-        height=125
+        height=175
     )
-
     # Save the figure as a PDF
     fig.write_image("./plots/npsk_%s_%d.png" % (performance_measure,program_num), engine="kaleido",scale=5)
     fig.show()
