@@ -110,9 +110,45 @@ def __(d, isnan, lfn_names, np, performance_measure, program_num):
 
 
 @app.cell
-def __(g):
-    g
-    return
+def __(d, get_p_error, pd):
+    # Kruskall wallic per program
+    from operator import itemgetter
+    columns = ['program_id', 'loss', 'Multi_Spec']
+    def get_mss_ploss(x):
+
+        return *itemgetter(*columns)(x),get_p_error(x)
+    all_results_array = [get_mss_ploss(x) for x in d]
+    evals_df = pd.DataFrame(all_results_array,columns=columns+["P_Loss"])
+    evals_df
+    return all_results_array, columns, evals_df, get_mss_ploss, itemgetter
+
+
+@app.cell
+def __(evals_df):
+    from scipy.stats import kruskal
+    def kruskal_by_loss_group(df, value_column):
+        """
+        Perform Kruskal-Wallis test on `value_column` for each group in the 'loss' column.
+        
+        Parameters:
+            df (pd.DataFrame): The input DataFrame with at least 'loss' and `value_column`.
+            value_column (str): The name of the column on which to apply the test.
+            
+        Returns:
+            H-statistic, p-value
+        """
+        grouped_values = [
+            group[value_column].values
+            for _, group in df.groupby("loss")
+        ]
+        
+        stat, p_value = kruskal(*grouped_values)
+        return stat, p_value
+
+    for pid in evals_df["program_id"].unique():
+        for eval_method in ["Multi_Spec","P_Loss"]:
+            print("program %d evaluation method %s"%(pid,eval_method),kruskal_by_loss_group(evals_df[evals_df["program_id"]==pid],eval_method))
+    return eval_method, kruskal, kruskal_by_loss_group, pid
 
 
 @app.cell

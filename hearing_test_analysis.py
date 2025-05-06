@@ -71,12 +71,6 @@ def __(mo):
 
 
 @app.cell
-def __(df):
-    df
-    return
-
-
-@app.cell
 def __(df, scipy):
     def match_and_spearman(df,group_name="all"):
         matched_responses = [df[df.Responder == x].sort_values("sound_file")["Score"].values for x in df.Responder.unique()]
@@ -85,6 +79,44 @@ def __(df, scipy):
     # per program spearman r
     df.groupby(["Program"]).apply(lambda x: match_and_spearman(x,x.name))
     return match_and_spearman,
+
+
+@app.cell
+def __(mo):
+    mo.md("# Kruskal wallis")
+    return
+
+
+@app.cell
+def __(df):
+    df
+    return
+
+
+@app.cell
+def __(df):
+    from scipy.stats import kruskal
+    def kruskal_by_loss_group(df, value_column):
+        """
+        Perform Kruskal-Wallis test on `value_column` for each group in the 'loss' column.
+        
+        Parameters:
+            df (pd.DataFrame): The input DataFrame with at least 'loss' and `value_column`.
+            value_column (str): The name of the column on which to apply the test.
+            
+        Returns:
+            H-statistic, p-value
+        """
+        grouped_values = [
+            group[value_column].values
+            for _, group in df.groupby("Function")
+        ]
+        
+        stat, p_value = kruskal(*grouped_values)
+        return stat, p_value
+    for pid in df.Program.unique():
+        print("pid %d"%pid,kruskal_by_loss_group(df[df.Program==pid],"Score"))
+    return kruskal, kruskal_by_loss_group, pid
 
 
 @app.cell
@@ -143,6 +175,11 @@ def __(df, np, pd):
         percentiles,
         program_num,
     )
+
+
+@app.cell
+def __():
+    return
 
 
 @app.cell
