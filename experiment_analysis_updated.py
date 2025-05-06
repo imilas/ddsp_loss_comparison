@@ -81,8 +81,7 @@ def __():
 
 
 @app.cell
-def __(d):
-    d[0]
+def __():
     return
 
 
@@ -129,11 +128,11 @@ def __(evals_df):
     def kruskal_by_loss_group(df, value_column):
         """
         Perform Kruskal-Wallis test on `value_column` for each group in the 'loss' column.
-        
+
         Parameters:
             df (pd.DataFrame): The input DataFrame with at least 'loss' and `value_column`.
             value_column (str): The name of the column on which to apply the test.
-            
+
         Returns:
             H-statistic, p-value
         """
@@ -141,7 +140,7 @@ def __(evals_df):
             group[value_column].values
             for _, group in df.groupby("loss")
         ]
-        
+
         stat, p_value = kruskal(*grouped_values)
         return stat, p_value
 
@@ -163,7 +162,7 @@ def __(g, lfn_names, np, pd):
 
     # Bootstrapping function to compute means and confidence intervals
     def bootstrap_means(scores, n_iterations=1000):
-        boot_means = [1/np.mean(np.random.choice(scores, size=len(scores)//2, replace=True)) for _ in range(n_iterations)]
+        boot_means = [1/np.mean(np.random.choice(scores, size=len(scores), replace=True)) for _ in range(n_iterations)]
         return boot_means
 
     # Perform bootstrapping for each category
@@ -261,7 +260,7 @@ def __(plot_data):
 
 
 @app.cell
-def __(performance_measure, plot_data, program_num):
+def __(plot_data):
     import plotly.graph_objects as go
 
     # Sort models alphabetically
@@ -307,7 +306,7 @@ def __(performance_measure, plot_data, program_num):
                 size=16,
                 color="black"
             )
-            
+
         ),
             yaxis=dict(
             showticklabels=False  # hides the y-axis tick labels (model names)
@@ -315,21 +314,20 @@ def __(performance_measure, plot_data, program_num):
         showlegend=False,
         yaxis_title=None,
         title=None,
-        
+
         margin=dict(l=0.1, r=0.1, t=0, b=0), 
         # template="seaborn",
         width=250,
         height=175
     )
     # Save the figure as a PDF
-    fig.write_image("./plots/npsk_%s_%d.png" % (performance_measure,program_num), engine="kaleido",scale=5)
+    # fig.write_image("./plots/npsk_%s_%d.png" % (performance_measure,program_num), engine="kaleido",scale=5)
     fig.show()
     return color, fig, go, model, model_order, rank, rank_palette, sub_df
 
 
 @app.cell
-def __(model_performance_df):
-    model_performance_df
+def __():
     return
 
 

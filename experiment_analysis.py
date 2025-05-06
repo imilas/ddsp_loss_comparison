@@ -185,7 +185,7 @@ def __(g, lfn_names, np, plt, sp):
 
 
 @app.cell
-def __(g, lfn_names, np, pd, performance_measure, plt, program_num, sns):
+def __(g, lfn_names, np, pd, performance_measure, plt, sns):
     # Convert data and create a DataFrame from `g` and `lfn_names`
     performance_data = {'Category': [], 'Score': []}
     for category, scores in zip(lfn_names, g):
@@ -269,7 +269,7 @@ def __(g, lfn_names, np, pd, performance_measure, plt, program_num, sns):
     plt.xlabel("Bootstrapped Mean %s" % performance_measure)
     plt.yticks(rotation=90)
     plt.tight_layout()
-    plt.savefig("./plots/p%d_%s.png" % (program_num, performance_measure), bbox_inches='tight', pad_inches=0, transparent=True)
+    # plt.savefig("./plots/p%d_%s.png" % (program_num, performance_measure), bbox_inches='tight', pad_inches=0, transparent=True)
 
     plt.show()
     return (
