@@ -1,17 +1,17 @@
 import marimo
 
-__generated_with = "0.5.2"
+__generated_with = "0.13.6"
 app = marimo.App(width="full")
 
 
 @app.cell
-def __():
+def _():
     import marimo as mo
-    return mo,
+    return (mo,)
 
 
 @app.cell
-def __(mo):
+def _(mo):
     mo.md(
         f"""
     This is a streamlined experiment for testing out loss functions. We manually define a synthesizer program containing _target parameters_ which make a _target sound_\. <br>
@@ -23,7 +23,7 @@ def __(mo):
 
 
 @app.cell
-def __():
+def _():
     import functools
     from functools import partial
     import itertools
@@ -48,9 +48,9 @@ def __():
     import copy
     import dm_pix
 
-    from helpers import faust_to_jax as fj
-    from helpers import loss_helpers
-    from helpers import softdtw_jax
+    from helper_funcs import faust_to_jax as fj
+    from helper_funcs import loss_helpers
+    from helper_funcs import softdtw_jax
     from kymatio.jax import Scattering1D
     import json
     import argparse
@@ -61,38 +61,26 @@ def __():
     SAMPLE_RATE = 44100
     length_seconds = 1  # how long should samples be
     return (
-        Path,
         SAMPLE_RATE,
         Scattering1D,
         argparse,
-        copy,
-        default_device,
         dm_pix,
         fj,
-        functools,
-        itertools,
         jax,
         jnp,
         json,
-        length_seconds,
-        librosa,
         loss_helpers,
-        nn,
         np,
         optax,
-        os,
-        partial,
         pd,
         plt,
         softdtw_jax,
         train_state,
-        unfreeze,
-        wavfile,
     )
 
 
 @app.cell
-def __(argparse):
+def _(argparse):
     # Parse known and unknown arguments
     # Create the parser
     parser = argparse.ArgumentParser(description='Process a loss function name.')
@@ -106,11 +94,11 @@ def __(argparse):
 
     # Use the argument
     print(f'Loss function: {args.loss_fn}, program num {args.program_number}')
-    return args, parser, unknown
+    return (args,)
 
 
 @app.cell
-def __(SAMPLE_RATE, Scattering1D, jnp, loss_helpers, np, softdtw_jax):
+def _(SAMPLE_RATE, Scattering1D, jnp, loss_helpers, np, softdtw_jax):
     # distance functions
     naive_loss = lambda x, y: jnp.abs(x - y).mean()
     cosine_distance = lambda x, y: np.dot(x, y) / (np.linalg.norm(x) * np.linalg.norm(y))
@@ -136,13 +124,7 @@ def __(SAMPLE_RATE, Scattering1D, jnp, loss_helpers, np, softdtw_jax):
 
     onset_1d = loss_helpers.onset_1d
     return (
-        HOP_LEN,
-        J,
-        NFFT,
-        Q,
-        WIN_LEN,
         clip_spec,
-        cosine_distance,
         dtw_jax,
         kernel,
         naive_loss,
@@ -153,7 +135,7 @@ def __(SAMPLE_RATE, Scattering1D, jnp, loss_helpers, np, softdtw_jax):
 
 
 @app.cell
-def __(args, json):
+def _(args, json):
     def load_programs(json_file):
         with open(json_file, 'r') as file:
             data = json.load(file)
@@ -167,11 +149,11 @@ def __(args, json):
     }
     experiment["program_and_params"] = load_programs("./programs_and_params.json")["programs"][str(experiment["program_id"])]
     print(experiment)
-    return experiment, load_programs
+    return (experiment,)
 
 
 @app.cell
-def __(SAMPLE_RATE, experiment, fj, jax):
+def _(SAMPLE_RATE, experiment, fj, jax):
     fj.SAMPLE_RATE = SAMPLE_RATE
     key = jax.random.PRNGKey(10)
 
@@ -189,15 +171,9 @@ def __(SAMPLE_RATE, experiment, fj, jax):
     return (
         init_params,
         instrument,
-        instrument_code,
         instrument_jit,
         instrument_params,
-        key,
         noise,
-        program,
-        true_code,
-        true_instrument,
-        true_instrument_jit,
         true_instrument_params,
         true_noise,
         true_params,
@@ -205,7 +181,7 @@ def __(SAMPLE_RATE, experiment, fj, jax):
 
 
 @app.cell
-def __(
+def _(
     SAMPLE_RATE,
     fj,
     instrument_jit,
@@ -220,17 +196,17 @@ def __(
     target_sound = instrument_jit(true_instrument_params, true_noise, SAMPLE_RATE)[0]
     fj.show_audio(init_sound)
     fj.show_audio(target_sound)
-    return init_sound, target_sound
+    return (target_sound,)
 
 
 @app.cell
-def __(dtw_jax, kernel, onset_1d, spec_func, target_sound):
+def _(dtw_jax, kernel, onset_1d, spec_func, target_sound):
     dtw_jax(onset_1d(target_sound, kernel, spec_func), onset_1d(target_sound, kernel, spec_func))
     return
 
 
 @app.cell
-def __(
+def _(
     SAMPLE_RATE,
     clip_spec,
     dm_pix,
@@ -322,30 +298,11 @@ def __(
             losses.append(loss)
             # print(n, loss, state.params)
             print(n, end="\r")
-    return (
-        audio,
-        clip_grads,
-        grad_fn,
-        learning_rate,
-        lfn,
-        loss,
-        loss_fn,
-        losses,
-        mod_vars,
-        n,
-        norm_params,
-        parameter_value,
-        pname,
-        real_params,
-        sounds,
-        state,
-        train_step,
-        tx,
-    )
+    return grad_fn, losses, norm_params, real_params
 
 
 @app.cell
-def __(losses, mo, plt, real_params, true_params):
+def _(losses, mo, plt, real_params, true_params):
     mo.output.clear()
     fig1, axs = plt.subplots(1, len(real_params) + 1, figsize=(12, 3))
     axs[0].set_xlabel("time (s)")
@@ -363,13 +320,14 @@ def __(losses, mo, plt, real_params, true_params):
         c += 1
     fig1.tight_layout()  # otherwise the right y-label is slightly clipped
     fig1
-    return ax, axs, c, colors, fig1, pname2, pvalue
+    return
 
 
 @app.cell
-def __(mo):
+def _(mo):
     mo.md(
-        """quiver plots
+        """
+    quiver plots
     1. Define grad function using loss
     2. draw quivers
     """
@@ -378,7 +336,7 @@ def __(mo):
 
 
 @app.cell
-def __(grad_fn, instrument_params, np, pd):
+def _(grad_fn, instrument_params, np, pd):
     def make_programs_df(true_params, granularity):
         # make programs that cover the grid, given the parameters dict
         meshgrid = np.meshgrid(*[np.linspace(-0.95, 1, granularity, endpoint=False) for i in range(len(true_params.keys()))])
@@ -390,11 +348,11 @@ def __(grad_fn, instrument_params, np, pd):
     granularity = 8
     programs_df = make_programs_df(instrument_params["params"], granularity)
     grad_loss_dict = [grad_fn({"params": programs_df.loc[i].to_dict()}) for i in range(len(programs_df))]
-    return grad_loss_dict, granularity, make_programs_df, programs_df
+    return grad_loss_dict, granularity, programs_df
 
 
 @app.cell
-def __(
+def _(
     grad_loss_dict,
     granularity,
     instrument_params,
@@ -437,7 +395,7 @@ def __(
 
     plt.show()
     # plt.savefig("./plots/p%d_%s.png"%(experiment["program_id"],experiment["loss"]),bbox_inches='tight', pad_inches=0, transparent=True)
-    return data, grad_dir, simple_norm_params
+    return
 
 
 if __name__ == "__main__":

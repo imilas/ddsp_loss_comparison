@@ -6,16 +6,18 @@ app = marimo.App(width="full")
 
 @app.cell
 def _():
-    import marimo as mo
-    return (mo,)
+    return
 
 
 @app.cell
 def _():
+    import sys
+    from pathlib import Path
+    project_root = Path(__file__).resolve().parent.parent
+    import marimo as mo
     import functools
     from functools import partial
     import itertools
-    from pathlib import Path
     import os
     import jax
     import jax.numpy as jnp
@@ -35,19 +37,18 @@ def _():
     # from audax.core import functional
     import copy
     import dm_pix
-
-    from helpers import faust_to_jax as fj
-    from helpers import loss_helpers
-    from helpers import softdtw_jax
-    from helpers.experiment_scripts import append_to_json
+    from helper_funcs import program_generators as pg
+    from helper_funcs import faust_to_jax as fj
+    from helper_funcs import loss_helpers
+    from helper_funcs import softdtw_jax
+    from helper_funcs.experiment_scripts import append_to_json
+    from helper_funcs.program_generators import choose_program, generate_parameters
+    import random
 
     from kymatio.jax import Scattering1D
     import json
     import argparse
-
-    import pickle
-    import uuid
-
+    from helper_funcs import experiment_setup as setup
 
     default_device = "cpu"  # or 'gpu'
     jax.config.update("jax_platform_name", default_device)
@@ -56,68 +57,38 @@ def _():
     length_seconds = 1  # how long should samples be
     return (
         SAMPLE_RATE,
-        Scattering1D,
         argparse,
+        choose_program,
         dm_pix,
         fj,
+        generate_parameters,
         jax,
         jnp,
-        loss_helpers,
+        mo,
         np,
         optax,
-        softdtw_jax,
+        plt,
+        setup,
         train_state,
     )
 
 
 @app.cell
-def _(argparse):
-    # Parse known and unknown arguments
-    # Create the parser
+def _(argparse, setup):
     parser = argparse.ArgumentParser(description='Process a loss function name.')
-
-    # Add a string argument
     parser.add_argument('--loss_fn', type=str, help='the name of the loss function. One of:  L1_Spec , DTW_Onset, SIMSE_Spec, JTFS',default="L1_Spec")
     parser.add_argument('--learning_rate', type=float, help='learning rate',default=0.01)
     parser.add_argument('--program_id', type=int, choices=[0, 1, 2, 3], default = 0, help="The program ID to select (0, 1, 2, or 3)")
     args, unknown = parser.parse_known_args()
-
-    # Parse the arguments
-    # args = parser.parse_args()
-
-
-    # Use the argument
-    print(f'Loss function: {args.loss_fn}')
-    return (args,)
-
-
-@app.cell
-def _(SAMPLE_RATE, Scattering1D, jnp, loss_helpers, np, softdtw_jax):
-    # distance functions
-    naive_loss = lambda x, y: jnp.abs(x - y).mean()
-    cosine_distance = lambda x, y: np.dot(x, y) / (np.linalg.norm(x) * np.linalg.norm(y))
-
-    # Spec function
-    NFFT = 512
-    WIN_LEN = 600
-    HOP_LEN = 100
-    spec_func = loss_helpers.spec_func(NFFT, WIN_LEN, HOP_LEN)
-
-    def clip_spec(x):
-        return jnp.clip(x, a_min=0, a_max=1)
-
-    dtw_jax = softdtw_jax.SoftDTW(gamma=1)
-    kernel = jnp.array(loss_helpers.gaussian_kernel1d(3, 0, 10))  # create a gaussian kernel (sigma,order,radius)
-
-    J = 6  # higher creates smoother loss but more costly
-    Q = 1
-    scat_jax = Scattering1D(J, SAMPLE_RATE, Q)
-
-    onset_1d = loss_helpers.onset_1d
-
-    # for Multi_Spec loss. Generate spec functions for each NFFT value
-    spec_funs = [loss_helpers.return_mel_spec(x, SAMPLE_RATE) for x in [512, 1024, 2048, 4096]]
+    spec_func = setup.spec_func
+    clip_spec = setup.clip_spec
+    naive_loss = setup.naive_loss
+    dtw_jax = setup.dtw_jax
+    scat_jax = setup.scat_jax
+    kernel = setup.kernel
+    onset_1d = setup.onset_1d
     return (
+        args,
         clip_spec,
         dtw_jax,
         kernel,
@@ -125,43 +96,29 @@ def _(SAMPLE_RATE, Scattering1D, jnp, loss_helpers, np, softdtw_jax):
         onset_1d,
         scat_jax,
         spec_func,
-        spec_funs,
     )
 
 
 @app.cell
-def _(args):
-    from helpers.program_generators import choose_program
-    import random
-
-    if args.program_id == 0:
-        var1_range = (50, 1000)
-        var2_range = (1, 120)
-        true_var1 = int(random.uniform(var1_range[0], var1_range[1]))
-        true_var2 = int(random.uniform(var2_range[0], var2_range[1]))
-    elif args.program_id == 1:
-        var1_range = (30, 1000)
-        var2_range = (30, 1000)
-        true_var1 = int(random.uniform(var1_range[0], var1_range[1]))
-        true_var2 = int(random.uniform(var2_range[0], var2_range[1]))
-    elif args.program_id == 2:
-        var1_range = (0.1, 1)
-        var2_range = (1, 20)
-        true_var1 = random.uniform(var1_range[0], var1_range[1])
-        true_var2 = int(random.uniform(var2_range[0], var2_range[1]))
-    elif args.program_id == 3:
-        var1_range = (1, 20)
-        var2_range = (10, 1000)
-        true_var1 = int(random.uniform(var1_range[0], var1_range[1]))
-        true_var2 = int(random.uniform(var2_range[0], var2_range[1]))
-
-
+def _(args, choose_program, generate_parameters):
+    var1_range, var2_range,true_var1,true_var2 = generate_parameters(1)
     rand_prog_code, var1_value, var2_value = choose_program(args.program_id, var1_range, var2_range)
     true_prog_code, true_var1_value, true_var2_value = choose_program(args.program_id,var1_range, var2_range,true_var1,true_var2)
     print("Program Code:\n", true_prog_code)
     print("init vars",var1_value,var2_value)
     print("true vars",true_var1_value,true_var2_value)
     return rand_prog_code, true_prog_code
+
+
+@app.cell
+def _():
+    # i am making fause programs, which can have a number of sliders.
+    # each slider has a value, and a range (min,max). the value is the default value, and the range is useful to set boundries for parameter updates
+    # let's say the function that generates these programs is called generate_program.
+    # each program could be a json file, where the program id and program code with placeholders for the parameters (parameters being valid ranges and values is defined)
+    # generate_program takes in the program id, and optionally a set of values for each parameter. If the values are not defined, it will arbitrarly chooose a value between the range for each parameter. generate_program then returns the completed program, and a dictionary of parameter names and ranges. 
+
+    return
 
 
 @app.cell
@@ -206,8 +163,8 @@ def _(
     true_noise,
 ):
     mo.output.clear()
-    init_sound = instrument_jit(instrument_params, noise, SAMPLE_RATE)[0]
-    target_sound = instrument_jit(true_instrument_params, true_noise, SAMPLE_RATE)[0]
+    init_sound,true_params = instrument_jit(instrument_params, noise, SAMPLE_RATE)
+    target_sound,_ = instrument_jit(true_instrument_params, true_noise, SAMPLE_RATE)
     fj.show_audio(init_sound)
     fj.show_audio(target_sound)
     return (target_sound,)
@@ -238,28 +195,29 @@ def _(
     variable_names,
 ):
     learning_rate = experiment["lr"]
+    lfn = experiment["loss"]
     # Create Train state
     tx = optax.rmsprop(learning_rate)
     state = train_state.TrainState.create(
         apply_fn=instrument.apply, params=instrument_params, tx=tx
     )
-    lfn = experiment["loss"]
-
     # loss fn shows the difference between the output of synth and a target_sound
     def loss_fn(params):
         pred = instrument_jit(params, noise, SAMPLE_RATE)[0]
-        # loss = (jnp.abs(pred - target_sound)).mean()
-        # loss = 1/dm_pix.ssim(clip_spec(spec_func(target_sound)),clip_spec(spec_func(pred)))
-        if lfn  == 'L1_Spec':
+
+        if lfn == 'L1_Spec':
             loss = naive_loss(spec_func(pred)[0], spec_func(target_sound))
-        elif lfn  == 'SIMSE_Spec':
+        elif lfn == 'SIMSE_Spec':
             loss = dm_pix.simse(clip_spec(spec_func(target_sound)), clip_spec(spec_func(pred)))
-        elif lfn  == 'DTW_Onset':
-            loss = dtw_jax(onset_1d(target_sound, kernel, spec_func), onset_1d(pred, kernel, spec_func))
-        elif lfn  == 'JTFS':
+        elif lfn == 'DTW_Onset':
+            loss = dtw_jax(
+                onset_1d(target_sound, kernel, spec_func),
+                onset_1d(pred, kernel, spec_func)
+            )
+        elif lfn == 'JTFS':
             loss = naive_loss(scat_jax(target_sound), scat_jax(pred))
         else:
-            raise ValueError("Invalid value for loss")  
+            raise ValueError("Invalid value for loss")
         return loss, pred
 
     # Clip gradients function
@@ -267,10 +225,8 @@ def _(
         total_norm = jnp.sqrt(sum(jnp.sum(p ** 2) for p in jax.tree_util.tree_leaves(grads)))
         scale = clip_norm / jnp.maximum(total_norm, clip_norm)
         return jax.tree_util.tree_map(lambda g: g * scale, grads)
-
-
+    
     grad_fn = jax.jit(jax.value_and_grad(loss_fn, has_aux=True))
-
 
     @jax.jit
     def train_step(state):
@@ -281,13 +237,12 @@ def _(
         state = state.apply_gradients(grads=grads)
         return state, loss
 
-
     losses = []
     sounds = []
     real_params = {k: [] for k in variable_names}  # will record parameters while searching
     norm_params = {k: [] for k in variable_names}  # will record parameters while searching
 
-    for n in range(200):
+    for n in range(50):
         state, loss = train_step(state)
         if n % 1 == 0:
             audio, mod_vars = instrument_jit(state.params, noise, SAMPLE_RATE)
@@ -301,49 +256,45 @@ def _(
             losses.append(loss)
             # print(n, loss, state.params)
             print(n, end="\r")
-    return norm_params, sounds
+    return losses, real_params
 
 
 @app.cell
-def _(
-    dtw_jax,
-    experiment,
-    kernel,
-    loss_helpers,
-    naive_loss,
-    norm_params,
-    onset_1d,
-    scat_jax,
-    sounds,
-    spec_func,
-    spec_funs,
-    target_sound,
-    true_instrument_params,
-):
-    # variables that need saving
-    experiment["true_params"] = true_instrument_params
-    experiment["norm_params"] = norm_params
-    experiment["Multi_Spec"] = loss_helpers.loss_multi_spec(sounds[-1], target_sound,spec_funs)
-    experiment["L1_Spec"] = naive_loss(spec_func(sounds[-1]), spec_func(target_sound))
-    experiment["DTW_Onset"] = dtw_jax(onset_1d(target_sound, kernel, spec_func), onset_1d(sounds[-1], kernel, spec_func))
-    experiment["JTFS"] = naive_loss(scat_jax(target_sound), scat_jax(sounds[-1]))
-    experiment["target_sound"] = target_sound
-    experiment["output_sound"] = sounds[-1]
-
-    # # Generate a random file name
-    # file_name = f"./results/%s_%s_%s.pkl"%(experiment["loss"],experiment["program_id"],uuid.uuid4())
-
-    # # Save the dictionary with the random file name
-    # with open(file_name, "wb") as file:
-    #     pickle.dump(experiment, file)
-
-    # print(f"File saved as: {file_name}")
+def _():
     return
 
 
 @app.cell
-def _(file_name):
-    file_name
+def _(true_instrument_params):
+    true_instrument_params
+    return
+
+
+@app.cell
+def _(losses, mo, plt, real_params, true_instrument_params):
+    mo.output.clear()
+    fig1, axs = plt.subplots(1, len(real_params) + 1, figsize=(12, 3))
+    axs[0].set_xlabel("time (s)")
+    axs[0].set_ylabel("loss", color="white")
+    axs[0].plot(losses, color="white")
+
+    c = 0
+    colors = ["red", "green", "blue", "purple"]
+    for pname2, pvalue in real_params.items():
+        ax = axs[c + 1]
+        ax.set_ylabel(pname2)  # we already handled the x-label with ax1
+        ax.plot(real_params[pname2], color=colors[c])
+        ax.axhline(true_instrument_params["params"]["_dawdreamer/%s" % pname2], linestyle="dashed", color=colors[c], label="true")
+        ax.tick_params(axis="y")
+        c += 1
+    fig1.tight_layout()  # otherwise the right y-label is slightly clipped
+    fig1
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md("We're dealing with a 2D loss function here, so lets isolate one of the parameters and plot the loss function as a function of the other parameter.")
     return
 
 
