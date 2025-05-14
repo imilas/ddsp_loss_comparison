@@ -15,7 +15,6 @@ def _():
     import functools
     from functools import partial
     import itertools
-    from pathlib import Path
     import os
     import jax
     import jax.numpy as jnp
@@ -36,10 +35,11 @@ def _():
     import copy
     import dm_pix
 
-    from helpers import faust_to_jax as fj
-    from helpers import loss_helpers
-    from helpers import softdtw_jax
-    from helpers.experiment_scripts import append_to_json
+    from helper_funcs import program_generators as pg
+    from helper_funcs import faust_to_jax as fj
+    from helper_funcs import loss_helpers
+    from helper_funcs import softdtw_jax
+    from helper_funcs.experiment_scripts import append_to_json
 
     from kymatio.jax import Scattering1D
     import json
@@ -329,7 +329,6 @@ def _(
     experiment["JTFS"] = naive_loss(scat_jax(target_sound), scat_jax(sounds[-1]))
     experiment["target_sound"] = target_sound
     experiment["output_sound"] = sounds[-1]
-
     # # Generate a random file name
     # file_name = f"./results/%s_%s_%s.pkl"%(experiment["loss"],experiment["program_id"],uuid.uuid4())
 
@@ -342,8 +341,7 @@ def _(
 
 
 @app.cell
-def _(file_name):
-    file_name
+def _():
     return
 
 

@@ -48,10 +48,13 @@ def _():
     import copy
     import dm_pix
 
+    from helper_funcs import program_generators as pg
     from helper_funcs import faust_to_jax as fj
     from helper_funcs import loss_helpers
     from helper_funcs import softdtw_jax
+    from helper_funcs.experiment_scripts import append_to_json
     from kymatio.jax import Scattering1D
+
     import json
     import argparse
 
