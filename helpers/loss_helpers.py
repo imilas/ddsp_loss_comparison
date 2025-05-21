@@ -14,7 +14,6 @@ from audax.core import functional
 
 @partial(jax.jit, static_argnames=["sf"])
 def onset_1d(target,k,sf):
-    # print(target.shape)
     ts = sf(target)[0].sum(axis=1)
     onsets = jnp.convolve(ts, k, mode="same")  # smooth amplitude curve
     return onsets
