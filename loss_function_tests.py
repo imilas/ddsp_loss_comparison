@@ -1,11 +1,11 @@
 import marimo
 
-__generated_with = "0.5.2"
+__generated_with = "0.13.6"
 app = marimo.App(width="full")
 
 
 @app.cell
-def __():
+def _():
     import marimo as mo
     import functools
     from functools import partial
@@ -41,35 +41,25 @@ def __():
         np.linalg.norm(x) * np.linalg.norm(y)
     )
     return (
-        Path,
         SAMPLE_RATE,
         copy,
-        cosine_distance,
-        default_device,
         dtw,
         fj,
-        functional,
-        functools,
-        itertools,
         jax,
         jnp,
         length_seconds,
         librosa,
         mo,
         naive_loss,
-        nn,
         np,
-        optax,
-        os,
         partial,
         plt,
         ts_comparisons,
-        wavfile,
     )
 
 
 @app.cell
-def __(SAMPLE_RATE, fj, jax):
+def _(SAMPLE_RATE, fj, jax):
     fj.SAMPLE_RATE = SAMPLE_RATE
     key = jax.random.PRNGKey(10)
 
@@ -83,7 +73,7 @@ def __(SAMPLE_RATE, fj, jax):
 
 
 @app.cell
-def __(SAMPLE_RATE, faust_code_3, fj, jax, key, length_seconds, partial):
+def _(SAMPLE_RATE, faust_code_3, fj, jax, key, length_seconds, partial):
     DSP = fj.faust2jax(faust_code_3)
     DSP = DSP(SAMPLE_RATE)
     DSP_jit = jax.jit(partial(DSP.apply,mutable="intermediates"), static_argnums=[2])
@@ -94,27 +84,27 @@ def __(SAMPLE_RATE, faust_code_3, fj, jax, key, length_seconds, partial):
         maxval=1,
     )
     DSP_params = DSP.init(key, noise, SAMPLE_RATE)
-    return DSP, DSP_jit, DSP_params, noise
+    return DSP_jit, DSP_params, noise
 
 
 @app.cell
-def __(DSP_params):
+def _(DSP_params):
     DSP_params
     return
 
 
 @app.cell
-def __(faust_code_3, fj, key, length_seconds, mo):
+def _(faust_code_3, fj, key, length_seconds, mo):
     mo.output.clear()
     target, _ = fj.process_noise_in_faust(
         faust_code_3, key, length_seconds=length_seconds
     )
     fj.show_audio(target)
-    return target,
+    return (target,)
 
 
 @app.cell
-def __(DSP_jit, DSP_params, SAMPLE_RATE, copy, jnp, noise):
+def _(DSP_jit, DSP_params, SAMPLE_RATE, copy, jnp, noise):
     def fill_template(template, pkey, fill_values):
         template = template.copy()
         """template is the model parameter, pkey is the parameter we want to change, and fill_value is the value we assign to the parameter
@@ -132,18 +122,18 @@ def __(DSP_jit, DSP_params, SAMPLE_RATE, copy, jnp, noise):
     ]
 
     outputs = [DSP_jit(p, noise, SAMPLE_RATE)[0] for p in programs]
-    return fill_template, outputs, param_linspace, programs, target_param
+    return outputs, param_linspace, target_param
 
 
 @app.cell
-def __(fj, mo, outputs):
+def _(fj, mo, outputs):
     mo.output.clear()
     fj.show_audio(outputs[0])
     return
 
 
 @app.cell
-def __(SAMPLE_RATE, librosa, np, outputs, target):
+def _(SAMPLE_RATE, librosa, np, outputs, target):
     output_onsets = [
         librosa.onset.onset_strength_multi(
             y=np.array(y), sr=SAMPLE_RATE, channels=[0, 16, 64, 96, 128]
@@ -157,7 +147,7 @@ def __(SAMPLE_RATE, librosa, np, outputs, target):
 
 
 @app.cell
-def __(
+def _(
     DSP_params,
     mo,
     np,
@@ -189,11 +179,11 @@ def __(
     )
     plt.legend()
     plt.title("cbd loss using onsets")
-    return cbd, cbd_loss
+    return
 
 
 @app.cell
-def __(
+def _(
     DSP_params,
     dtw,
     mo,
@@ -233,11 +223,11 @@ def __(
     )
     plt.legend()
     plt.title("dtw loss using onsets")
-    return dtw_loss, dtw_losses
+    return
 
 
 @app.cell
-def __():
+def _():
     # mo.output.clear()
     # from kymatio.torch import Scattering1D  # faster than the numpy, jax very slow
     # import torch
@@ -278,7 +268,7 @@ def __():
 
 
 @app.cell
-def __(SAMPLE_RATE, mo, np, plt, target):
+def _(SAMPLE_RATE, mo, np, plt, target):
     mo.output.clear()
     from kymatio.jax import Scattering1D
 
@@ -298,29 +288,18 @@ def __(SAMPLE_RATE, mo, np, plt, target):
     # # target_scatter = target_scatter[1:, :]
     # target_scatter = torch.log(torch.abs(target_scatter) + log_eps)
     # target_scatter = torch.mean(target_scatter, dim=-1)
-    return (
-        J,
-        Q,
-        Scattering1D,
-        log_eps,
-        meta,
-        order0,
-        order1,
-        order2,
-        scat_jax,
-        target_scatter,
-    )
+    return scat_jax, target_scatter
 
 
 @app.cell
-def __(outputs, scat_jax):
+def _(outputs, scat_jax):
     outputs_scatter = [scat_jax(x[0]) for x in outputs]
     # outputs_scatter = [scat_jit(x[0]) for x in outputs[0:10]]
-    return outputs_scatter,
+    return (outputs_scatter,)
 
 
 @app.cell
-def __(
+def _(
     DSP_params,
     naive_loss,
     outputs_scatter,
@@ -339,11 +318,11 @@ def __(
     )
     plt.legend()
     plt.title("wavelet scatter loss")
-    return losses_scatter,
+    return
 
 
 @app.cell
-def __():
+def _():
     # what to do?
     # - 2D loss function might be smoother
     # - show effectiveness on out of synth sounds
@@ -356,7 +335,7 @@ def __():
 
 
 @app.cell
-def __():
+def _():
     # NFFTs = [256,512,2048,4096] 
 
     # def return_mel_spec(NFFT):
@@ -381,7 +360,7 @@ def __():
 
 
 @app.cell
-def __():
+def _():
     return
 
 

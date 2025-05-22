@@ -59,7 +59,17 @@ def _():
 
     SAMPLE_RATE = 44100
     length_seconds = 1  # how long should samples be
-    return argparse, setup
+    return (
+        SAMPLE_RATE,
+        argparse,
+        fj,
+        jax,
+        length_seconds,
+        mo,
+        partial,
+        pg,
+        setup,
+    )
 
 
 @app.cell
@@ -91,6 +101,47 @@ def _():
 
 @app.cell
 def _():
+    return
+
+
+@app.cell
+def _(SAMPLE_RATE, fj, jax, pg):
+    fj.SAMPLE_RATE = SAMPLE_RATE
+    key = jax.random.PRNGKey(10)
+
+    faust_code,_ = pg.generate_lp_1D([100,1000])
+    print(faust_code)
+    return faust_code, key
+
+
+@app.cell
+def _(SAMPLE_RATE, faust_code, fj, jax, key, length_seconds, partial):
+    DSP = fj.faust2jax(faust_code)
+    DSP = DSP(SAMPLE_RATE)
+    DSP_jit = jax.jit(partial(DSP.apply,mutable="intermediates"), static_argnums=[1])
+    noise = jax.random.uniform(
+        jax.random.PRNGKey(10),
+        [DSP.getNumInputs(), SAMPLE_RATE * length_seconds],
+        minval=0,
+        maxval=0,
+    )
+    DSP_params = DSP.init(key, noise, SAMPLE_RATE)
+    return (DSP_params,)
+
+
+@app.cell
+def _(DSP_params):
+    DSP_params
+    return
+
+
+@app.cell
+def _(faust_code, fj, key, length_seconds, mo):
+    mo.output.clear()
+    target, _ = fj.process_noise_in_faust(
+        faust_code, key, length_seconds=length_seconds
+    )
+    fj.show_audio(target)
     return
 
 
