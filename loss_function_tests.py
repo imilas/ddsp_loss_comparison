@@ -73,7 +73,7 @@ def _(SAMPLE_RATE, fj, jax):
 
 
 @app.cell
-def _(SAMPLE_RATE, faust_code_3, fj, jax, key, length_seconds, partial):
+def _(SAMPLE_RATE, faust_code_3, fj, jax, length_seconds, partial):
     DSP = fj.faust2jax(faust_code_3)
     DSP = DSP(SAMPLE_RATE)
     DSP_jit = jax.jit(partial(DSP.apply,mutable="intermediates"), static_argnums=[2])
@@ -83,8 +83,8 @@ def _(SAMPLE_RATE, faust_code_3, fj, jax, key, length_seconds, partial):
         minval=-1,
         maxval=1,
     )
-    DSP_params = DSP.init(key, noise, SAMPLE_RATE)
-    return DSP_jit, DSP_params, noise
+    # DSP_params = DSP.init(key, noise, SAMPLE_RATE)
+    return DSP_jit, noise
 
 
 @app.cell

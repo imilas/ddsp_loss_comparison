@@ -26,7 +26,7 @@ def _():
     from helper_funcs import faust_to_jax as fj
     from audax.core import functional
     import copy
-    from helpers import ts_comparisions as ts_comparisons
+    from helper_funcs import ts_comparisions as ts_comparisons
     import dtw
 
 
@@ -58,12 +58,6 @@ def _():
 
 
 @app.cell
-def _(jax):
-    jax.__version__
-    return
-
-
-@app.cell
 def _(SAMPLE_RATE, fj, jax):
     fj.SAMPLE_RATE = SAMPLE_RATE
     key = jax.random.PRNGKey(10)
@@ -90,12 +84,15 @@ def _(SAMPLE_RATE, fj, jax):
     FX = fi.lowpass(5,cutoff);
     process = os.osc(os.osc(osc_f)*4)*400,_:["cutoff":+(_,_)->FX];
     """
-    return faust_code_3, key
+
+    # from helper_funcs import program_generators as pg
+    # faust_code_4 = pg.generate_lp_1D([100,1000])
+    return faust_code_1, faust_code_3, key
 
 
 @app.cell
-def _(SAMPLE_RATE, faust_code_3, fj, jax, key):
-    DSP = fj.faust2jax(faust_code_3)
+def _(SAMPLE_RATE, faust_code_1, fj, jax, key):
+    DSP = fj.faust2jax(faust_code_1)
     DSP = DSP(SAMPLE_RATE)
     DSP_jit = jax.jit(DSP.apply, static_argnums=[2])
     noise = jax.random.uniform(
@@ -111,14 +108,19 @@ def _(SAMPLE_RATE, faust_code_3, fj, jax, key):
         maxval=1,
     )
     DSP_params = DSP.init(key, noise, SAMPLE_RATE)
-    return DSP_jit, DSP_params, noise_2
+    return DSP_jit, DSP_params, noise, noise_2
 
 
 @app.cell
-def _(faust_code_3, fj, key, mo):
+def _():
+    return
+
+
+@app.cell
+def _(faust_code_3, fj, key, mo, noise):
     mo.output.clear()
     target, _ = fj.process_noise_in_faust(faust_code_3, key)
-    fj.show_audio(target)
+    fj.show_audio(noise)
     return (target,)
 
 
