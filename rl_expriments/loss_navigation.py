@@ -103,22 +103,12 @@ def _(argparse, setup):
 
 
 @app.cell
-def _():
-    # i am making fause programs, which can have a number of sliders.
-    # each slider has a default value, and a range (min,max). The range is useful to set boundries for parameter updates
-    # let's say the function that generates these programs is called generate_program.
-    # each program could be a json file that has an id and program code with placeholders for the parameters (parameters being valid ranges and values)
-    # generate_program takes in the program id, a range, and optionally a set of values for each parameter. If the values are not defined, it will arbitrarly chooose a value between the range for each parameter. generate_program then returns the completed program, and a dictionary of parameter names and ranges. 
-    return
-
-
-@app.cell
 def _(SAMPLE_RATE, fj, jax, pg):
     fj.SAMPLE_RATE = SAMPLE_RATE
     key = jax.random.PRNGKey(10)
 
     faust_code,_ = pg.generate_lp_1D([100,1000])
-    # faust_code,_ = pg.generate_program_2_1D([0.1,20])
+    faust_code,_ = pg.generate_program_2_1D([0.1,20])
     print(faust_code)
     return faust_code, key
 
@@ -190,7 +180,7 @@ def _(
     spec_func,
     target_sound,
 ):
-    lfn = 'DTW_Onset'
+    lfn = 'L1_Spec'
     def loss_fn(params):
         pred = instrument_jit(params, noise, SAMPLE_RATE)[0]
         # loss = (jnp.abs(pred - target_sound)).mean()
@@ -218,7 +208,6 @@ def _(
 @app.cell
 def _(grad_fn, programs):
     lpg = [grad_fn(p) for p in programs]
-    lpg[0]
     return (lpg,)
 
 
@@ -240,9 +229,9 @@ def _(DSP_params, g, lpg, np, param_linspace, plt):
     ax2 = ax1.twinx()
     eps = 1e-3  # or any small value
     result = [-1 if x < -eps else 1 if x > eps else 0 for x in g]
-    window_size = 3
+    window_size = 40
     window = np.ones(window_size) / window_size
-    result = np.convolve(result, window, mode='same')
+    result = np.convolve(g, window, mode='same')
     # ax2.plot(param_linspace, g, label='Normalized g', color='green')
     ax2.plot(param_linspace, result, color='green' )
 
