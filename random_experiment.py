@@ -131,7 +131,7 @@ def _(SAMPLE_RATE, Scattering1D, jnp, loss_helpers, np, softdtw_jax):
 
 @app.cell
 def _(args):
-    from helpers.program_generators import choose_program
+    from helper_funcs.program_generators import choose_program
     import random
 
     if args.program_id == 0:

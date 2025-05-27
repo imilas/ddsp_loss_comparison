@@ -17,42 +17,23 @@ def _():
     sys.path.insert(0, str(_parentdir))
 
 
-    import marimo as mo
-    import functools
+    import sys
+    from pathlib import Path
+    import argparse
+    import copy
     from functools import partial
-    import itertools
-    import os
     import jax
     import jax.numpy as jnp
+    from jax import random as jrandom
 
-    from flax import linen as nn
-    from flax.training import train_state  # Useful dataclass to keep train state
-    from flax.core.frozen_dict import unfreeze
-    import optax
+    import marimo as mo
 
-    import numpy as np
-    import pandas as pd
-
-    from scipy.io import wavfile
-    import librosa
-    import matplotlib.pyplot as plt
-
-    # from audax.core import functional
-    import copy
-    import dm_pix
-
-    from helper_funcs import program_generators as pg
     from helper_funcs import faust_to_jax as fj
-    from helper_funcs import loss_helpers
-    from helper_funcs import softdtw_jax
-    from helper_funcs.experiment_scripts import append_to_json
-    from helper_funcs.program_generators import choose_program, generate_parameters
-    import random
-
-    from kymatio.jax import Scattering1D
-    import json
-    import argparse
+    from helper_funcs import program_generators as pg
     from helper_funcs import experiment_setup as setup
+
+    import matplotlib.pyplot as plt
+    import numpy as np
 
     default_device = "cpu"  # or 'gpu'
     jax.config.update("jax_platform_name", default_device)
@@ -63,7 +44,6 @@ def _():
         SAMPLE_RATE,
         argparse,
         copy,
-        dm_pix,
         fj,
         jax,
         jnp,
@@ -107,8 +87,8 @@ def _(SAMPLE_RATE, fj, jax, pg):
     fj.SAMPLE_RATE = SAMPLE_RATE
     key = jax.random.PRNGKey(10)
 
-    faust_code,_ = pg.generate_lp_1D([100,1000])
-    faust_code,_ = pg.generate_program_2_1D([0.1,20])
+    faust_code,_ = pg.generate_1_1d([100,20000])
+    faust_code, _ = pg.generate_2_1d([0.1,20])
     print(faust_code)
     return faust_code, key
 
@@ -180,7 +160,7 @@ def _(
     spec_func,
     target_sound,
 ):
-    lfn = 'L1_Spec'
+    lfn = 'DTW_Onset'
     def loss_fn(params):
         pred = instrument_jit(params, noise, SAMPLE_RATE)[0]
         # loss = (jnp.abs(pred - target_sound)).mean()
