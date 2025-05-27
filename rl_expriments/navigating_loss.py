@@ -66,7 +66,6 @@ def _():
         mo,
         naive_loss,
         onset_1d,
-        optax,
         pg,
         plt,
         scat_jax,
@@ -107,20 +106,19 @@ def _(SAMPLE_RATE, fj, jax, jnp, jrandom, length_seconds, mo, pg):
         {**DSP_params, "params": {**DSP_params["params"], target_param: x}}
         for x in param_linspace
     ]
-    init_p = programs[10]
+    init_p = programs[50]
     # --- Render and Play a Swept Version ---
     s, _ = instrument_jit(init_p, noise, SAMPLE_RATE)
     fj.show_audio(s)
 
 
-    return (
-        DSP_params,
-        init_p,
-        instrument_jit,
-        noise,
-        target_param,
-        target_sound,
-    )
+    return DSP_params, instrument_jit, noise, target_param, target_sound
+
+
+@app.cell
+def _(DSP_params):
+    DSP_params
+    return
 
 
 @app.cell
@@ -129,22 +127,16 @@ def _(
     clip_spec,
     dm_pix,
     dtw_jax,
-    init_p,
     instrument_jit,
-    jax,
     kernel,
     loss_multi_spec,
     naive_loss,
     noise,
     onset_1d,
-    optax,
     scat_jax,
     spec_func,
-    target_param,
     target_sound,
 ):
-
-
     lfn = 'DTW_Onset'
     def loss_fn(params):
         pred = instrument_jit(params, noise, SAMPLE_RATE)[0]
@@ -163,63 +155,165 @@ def _(
         else:
             raise ValueError("Invalid value for loss")  
         return loss, pred
-
-    # Optimizer setup
-    learning_rate = 0.04
-    num_steps = 100
-
-    optimizer = optax.adam(learning_rate)
-    opt_state = optimizer.init(init_p)
-
-    loss_history = []
-    param_history = []
-
-    grad_fn = jax.jit(jax.value_and_grad(loss_fn, has_aux=True))
-
-
-    @jax.jit
-    def update(params, opt_state):
-        (loss, pred), grads = grad_fn(params)
-        updates, opt_state = optimizer.update(grads, opt_state)
-        new_params = optax.apply_updates(params, updates)
-        return new_params, opt_state, loss
-
-    params = init_p
-    for step in range(num_steps):
-        params, opt_state, loss = update(params, opt_state)
-
-        loss_history.append(float(loss))
-        param_history.append(float(params["params"][target_param]))
-
-        if step % 10 == 0:
-            print(f"Step {step:3d} | Loss: {loss:.6f} | Param: {param_history[-1]:.4f}")
-
-
-    return loss_history, param_history
+    return
 
 
 @app.cell
-def _(DSP_params, loss_history, param_history, plt, target_param):
-    true_param_value = float(DSP_params["params"][target_param])
+def _():
+    # # Optimizer setup
+    # learning_rate = 0.04
+    # num_steps = 100
 
+    # optimizer = optax.rmsprop(learning_rate)
+    # opt_state = optimizer.init(init_p)
+
+    # loss_history = []
+    # param_history = []
+    # grad_fn = jax.jit(jax.value_and_grad(loss_fn, has_aux=True))
+
+
+    # @jax.jit
+    # def update(params, opt_state):
+    #     (loss, pred), grads = grad_fn(params)
+    #     updates, opt_state = optimizer.update(grads, opt_state)
+    #     new_params = optax.apply_updates(params, updates)
+    #     return new_params, opt_state, loss
+
+    # params = init_p
+    # for step in range(num_steps):
+    #     params, opt_state, loss = update(params, opt_state)
+
+    #     loss_history.append(float(loss))
+    #     param_history.append(float(params["params"][target_param]))
+
+    #     if step % 10 == 0:
+    #         print(f"Step {step:3d} | Loss: {loss:.6f} | Param: {param_history[-1]:.4f}")
+
+    # true_param_value = float(DSP_params["params"][target_param])
+
+    # plt.figure(figsize=(12, 4))
+
+    # # --- Loss plot ---
+    # plt.subplot(1, 2, 1)
+    # plt.plot(loss_history)
+    # plt.title("Loss over Time")
+    # plt.xlabel("Step")
+    # plt.ylabel("Loss")
+
+    # # --- Parameter evolution plot ---
+    # plt.subplot(1, 2, 2)
+    # plt.plot(param_history, label="Optimized Value")
+    # plt.axhline(y=true_param_value, color='red', linestyle='--', linewidth=2, label="Target Value")
+    # plt.title("Parameter Value over Time")
+    # plt.xlabel("Step")
+    # plt.ylabel(f"Param: {target_param}")
+    # plt.legend()
+
+    # plt.tight_layout()
+    # plt.show()
+
+    return
+
+
+@app.cell
+def _(DSP_params):
+    DSP_params
+    return
+
+
+@app.cell
+def _(
+    DSP_params,
+    SAMPLE_RATE,
+    instrument_jit,
+    jax,
+    jnp,
+    naive_loss,
+    noise,
+    plt,
+    spec_func,
+    target_param,
+    target_sound,
+):
+    # import jax
+    # import jax.numpy as jnp
+    # import random
+    # import optax
+    # import matplotlib.pyplot as plt
+
+    # Assume these are already defined:
+    # - instrument_jit
+    # - target_sound
+    # - noise
+    # - SAMPLE_RATE
+    # - spec_func
+    # - naive_loss
+    # - DSP_params
+    # - target_param
+
+    # Initialize mean and std over the parameter
+    mean = jnp.array([0.0])
+    std = jnp.array([0.5])
+    learning_rate = 0.3
+    key1 = jax.random.PRNGKey(0)
+
+    # Get true value to compare
+    true_value = float(DSP_params.copy()["params"][target_param])
+
+    print(DSP_params)
+    # Reward = negative L1 spectral loss
+    params = DSP_params.copy()
+
+    def reward_fn(param_val): 
+        params["params"][target_param] = param_val[0]
+        pred = instrument_jit(params, noise, SAMPLE_RATE)[0]
+        return -naive_loss(spec_func(pred)[0], spec_func(target_sound))
+
+    # Sample from policy
+    def sample_params(key, mean, std):
+        return mean + std * jax.random.normal(key1, shape=mean.shape)
+
+    # REINFORCE update
+    @jax.jit
+    def reinforce_update(mean, std, key1):
+        print(DSP_params)
+        sampled = sample_params(key1, mean, std)
+        reward = reward_fn(sampled)
+
+        grad_mean = (sampled - mean) / (std**2) * reward
+        grad_std = ((sampled - mean)**2 - std**2) / (std**3) * reward
+
+        new_mean = mean + learning_rate * grad_mean
+        new_std = std + learning_rate * grad_std
+        return new_mean, new_std, reward, sampled
+
+    # Optimization loop
+    rewards = []
+    param_vals = []
+
+    for step in range(1000):
+        key1, subkey = jax.random.split(key1)
+        mean, std, reward, sampled = reinforce_update(mean, std, subkey)
+        rewards.append(float(reward))
+        param_vals.append(float(sampled[0]))
+        if step % 10 == 0:
+            print(f"Step {step:3d} | Param: {sampled[0]:.4f} | Reward: {reward:.6f}")
+
+    # Plotting
     plt.figure(figsize=(12, 4))
-
-    # --- Loss plot ---
     plt.subplot(1, 2, 1)
-    plt.plot(loss_history)
-    plt.title("Loss over Time")
+    plt.plot(rewards)
+    plt.title("Reward over Time")
     plt.xlabel("Step")
-    plt.ylabel("Loss")
+    plt.ylabel("Reward")
 
-    # --- Parameter evolution plot ---
     plt.subplot(1, 2, 2)
-    plt.plot(param_history, label="Optimized Value")
-    plt.axhline(y=true_param_value, color='red', linestyle='--', linewidth=2, label="Target Value")
-    plt.title("Parameter Value over Time")
+    plt.plot(param_vals, label="Sampled Param")
+    plt.axhline(true_value, color='red', linestyle='--', label='True Param')
+    plt.title("Parameter over Time")
     plt.xlabel("Step")
-    plt.ylabel(f"Param: {target_param}")
+    plt.ylabel("Parameter Value")
     plt.legend()
-
     plt.tight_layout()
     plt.show()
 
