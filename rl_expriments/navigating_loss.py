@@ -155,7 +155,7 @@ def _(
         else:
             raise ValueError("Invalid value for loss")  
         return loss, pred
-    return
+    return (loss_fn,)
 
 
 @app.cell
@@ -222,25 +222,8 @@ def _(DSP_params):
 
 
 @app.cell
-def _(
-    DSP_params,
-    SAMPLE_RATE,
-    instrument_jit,
-    jax,
-    jnp,
-    naive_loss,
-    noise,
-    plt,
-    spec_func,
-    target_param,
-    target_sound,
-):
-    # import jax
-    # import jax.numpy as jnp
-    # import random
-    # import optax
-    # import matplotlib.pyplot as plt
-
+def _(DSP_params, jax, jnp, loss_fn, plt, target_param):
+    from copy import deepcopy
     # Assume these are already defined:
     # - instrument_jit
     # - target_sound
@@ -253,21 +236,21 @@ def _(
 
     # Initialize mean and std over the parameter
     mean = jnp.array([0.0])
-    std = jnp.array([0.5])
-    learning_rate = 0.3
+    std = jnp.array([1])
+    learning_rate = 0.0000001
     key1 = jax.random.PRNGKey(0)
 
     # Get true value to compare
     true_value = float(DSP_params.copy()["params"][target_param])
-
-    print(DSP_params)
     # Reward = negative L1 spectral loss
-    params = DSP_params.copy()
+    params = deepcopy(DSP_params)
 
     def reward_fn(param_val): 
         params["params"][target_param] = param_val[0]
-        pred = instrument_jit(params, noise, SAMPLE_RATE)[0]
-        return -naive_loss(spec_func(pred)[0], spec_func(target_sound))
+        l,_ = loss_fn(params)
+        return -l
+        # pred = instrument_jit(params, noise, SAMPLE_RATE)[0]
+        # return -loss_fn(spec_func(pred)[0], spec_func(target_sound))
 
     # Sample from policy
     def sample_params(key, mean, std):
@@ -276,7 +259,6 @@ def _(
     # REINFORCE update
     @jax.jit
     def reinforce_update(mean, std, key1):
-        print(DSP_params)
         sampled = sample_params(key1, mean, std)
         reward = reward_fn(sampled)
 
