@@ -237,7 +237,7 @@ def _(DSP_params, jax, jnp, loss_fn, plt, target_param):
     # Initialize mean and std over the parameter
     mean = jnp.array([0.0])
     std = jnp.array([1])
-    learning_rate = 0.0000001
+    learning_rate = 1e-8
     key1 = jax.random.PRNGKey(0)
 
     # Get true value to compare
@@ -253,8 +253,8 @@ def _(DSP_params, jax, jnp, loss_fn, plt, target_param):
         # return -loss_fn(spec_func(pred)[0], spec_func(target_sound))
 
     # Sample from policy
-    def sample_params(key, mean, std):
-        return mean + std * jax.random.normal(key1, shape=mean.shape)
+    def sample_params(key3, mean, std):
+        return mean + std * jax.random.normal(key3, shape=mean.shape)
 
     # REINFORCE update
     @jax.jit
@@ -279,7 +279,7 @@ def _(DSP_params, jax, jnp, loss_fn, plt, target_param):
         rewards.append(float(reward))
         param_vals.append(float(sampled[0]))
         if step % 10 == 0:
-            print(f"Step {step:3d} | Param: {sampled[0]:.4f} | Reward: {reward:.6f}")
+            print(f"Step {step:3d} | Param: {sampled[0]:.4f} | Reward: {reward:.6f}) | Mean,std: {mean,std}")
 
     # Plotting
     plt.figure(figsize=(12, 4))
@@ -299,6 +299,12 @@ def _(DSP_params, jax, jnp, loss_fn, plt, target_param):
     plt.tight_layout()
     plt.show()
 
+    return
+
+
+@app.cell
+def _():
+    1e-8
     return
 
 

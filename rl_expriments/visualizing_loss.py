@@ -71,15 +71,7 @@ def _(argparse, setup):
     scat_jax = setup.scat_jax
     kernel = setup.kernel
     onset_1d = setup.onset_1d
-    return (
-        clip_spec,
-        dtw_jax,
-        kernel,
-        naive_loss,
-        onset_1d,
-        scat_jax,
-        spec_func,
-    )
+    return
 
 
 @app.cell
@@ -116,7 +108,7 @@ def _(faust_code, fj, key, length_seconds, mo):
         faust_code, key, length_seconds=length_seconds
     )
     fj.show_audio(target_sound)
-    return (target_sound,)
+    return
 
 
 @app.cell
@@ -142,25 +134,10 @@ def _(DSP_params, SAMPLE_RATE, copy, fj, instrument_jit, jnp, noise):
     return param_linspace, programs
 
 
-@app.cell
-def _(
-    SAMPLE_RATE,
-    clip_spec,
-    dm_pix,
-    dtw_jax,
-    instrument_jit,
-    jax,
-    kernel,
-    loss_multi_spec,
-    naive_loss,
-    noise,
-    onset_1d,
-    programs,
-    scat_jax,
-    spec_func,
-    target_sound,
-):
-    lfn = 'DTW_Onset'
+app._unparsable_cell(
+    r"""
+    lfn = 'DTW_Onset'asdf
+
     def loss_fn(params):
         pred = instrument_jit(params, noise, SAMPLE_RATE)[0]
         # loss = (jnp.abs(pred - target_sound)).mean()
@@ -176,13 +153,15 @@ def _(
         elif lfn == 'Multi_Spec':
             loss = loss_multi_spec(target_sound,pred)
         else:
-            raise ValueError("Invalid value for loss")  
+            raise ValueError(\"Invalid value for loss\")  
         return loss, pred
 
 
     grad_fn = jax.jit(jax.value_and_grad(loss_fn, has_aux=True))
     (loss, pred), grads = grad_fn(programs[0])
-    return (grad_fn,)
+    """,
+    name="_"
+)
 
 
 @app.cell
