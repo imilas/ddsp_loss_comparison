@@ -224,6 +224,7 @@ def _(DSP_params):
 @app.cell
 def _(DSP_params, jax, jnp, loss_fn, plt, target_param):
     from copy import deepcopy
+    from scipy.ndimage import uniform_filter1d
     # Assume these are already defined:
     # - instrument_jit
     # - target_sound
@@ -253,8 +254,8 @@ def _(DSP_params, jax, jnp, loss_fn, plt, target_param):
         # return -loss_fn(spec_func(pred)[0], spec_func(target_sound))
 
     # Sample from policy
-    def sample_params(key3, mean, std):
-        return mean + std * jax.random.normal(key3, shape=mean.shape)
+    def sample_params(key, mean, std):
+        return mean + std * jax.random.normal(key, shape=mean.shape)
 
     # REINFORCE update
     @jax.jit
@@ -281,30 +282,32 @@ def _(DSP_params, jax, jnp, loss_fn, plt, target_param):
         if step % 10 == 0:
             print(f"Step {step:3d} | Param: {sampled[0]:.4f} | Reward: {reward:.6f}) | Mean,std: {mean,std}")
 
+    window_size = 25
+    rewards_smooth = uniform_filter1d(rewards, size=window_size)
+    param_vals_smooth = uniform_filter1d(param_vals, size=window_size)
+
     # Plotting
     plt.figure(figsize=(12, 4))
+
     plt.subplot(1, 2, 1)
-    plt.plot(rewards)
-    plt.title("Reward over Time")
+    plt.plot(rewards_smooth, label="Smoothed Reward")
+    plt.title("Reward over Time (Smoothed)")
     plt.xlabel("Step")
     plt.ylabel("Reward")
+    plt.grid(True)
 
     plt.subplot(1, 2, 2)
-    plt.plot(param_vals, label="Sampled Param")
+    plt.plot(param_vals_smooth, label="Smoothed Param")
     plt.axhline(true_value, color='red', linestyle='--', label='True Param')
-    plt.title("Parameter over Time")
+    plt.title("Parameter over Time (Smoothed)")
     plt.xlabel("Step")
     plt.ylabel("Parameter Value")
     plt.legend()
+    plt.grid(True)
+
     plt.tight_layout()
     plt.show()
 
-    return
-
-
-@app.cell
-def _():
-    1e-8
     return
 
 
