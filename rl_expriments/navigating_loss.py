@@ -222,70 +222,140 @@ def _(DSP_params):
 
 
 @app.cell
-def _(DSP_params, jax, jnp, loss_fn, plt, target_param):
+def _():
+    # from copy import deepcopy
+    # from scipy.ndimage import uniform_filter1d
+    # # Assume these are already defined:
+    # # - instrument_jit
+    # # - target_sound
+    # # - noise
+    # # - SAMPLE_RATE
+    # # - spec_func
+    # # - naive_loss
+    # # - DSP_params
+    # # - target_param
+
+    # # Initialize mean and std over the parameter
+    # mean = jnp.array([0.0])
+    # std = jnp.array([1])
+    # learning_rate = 1e-8
+    # key1 = jax.random.PRNGKey(0)
+
+    # # Get true value to compare
+    # true_value = float(DSP_params.copy()["params"][target_param])
+    # # Reward = negative L1 spectral loss
+    # params = deepcopy(DSP_params)
+
+    # def reward_fn(param_val): 
+    #     params["params"][target_param] = param_val[0]
+    #     l,_ = loss_fn(params)
+    #     return -l
+    
+    # # Sample from policy
+    # def sample_params(key, mean, std):
+    #     return mean + std * jax.random.normal(key, shape=mean.shape)
+
+    # # REINFORCE update
+    # @jax.jit
+    # def reinforce_update(mean, std, key1):
+    #     sampled = sample_params(key1, mean, std)
+    #     reward = reward_fn(sampled)
+
+    #     grad_mean = (sampled - mean) / (std**2) * reward
+    #     grad_std = ((sampled - mean)**2 - std**2) / (std**3) * reward
+
+    #     new_mean = mean + learning_rate * grad_mean
+    #     new_std = std + learning_rate * grad_std
+    #     return new_mean, new_std, reward, sampled
+
+    # # Optimization loop
+    # rewards = []
+    # param_vals = []
+
+    # for step in range(1000):
+    #     key1, subkey = jax.random.split(key1)
+    #     mean, std, reward, sampled = reinforce_update(mean, std, subkey)
+    #     rewards.append(float(reward))
+    #     param_vals.append(float(sampled[0]))
+    #     if step % 50 == 0:
+    #         print(f"Step {step:3d} | Param: {sampled[0]:.4f} | Reward: {reward:.6f} | Mean,std: {mean,std}", end='\r', flush=True)
+
+
+    # window_size = 25
+    # rewards_smooth = uniform_filter1d(rewards, size=window_size)
+    # param_vals_smooth = uniform_filter1d(param_vals, size=window_size)
+
+    return
+
+
+@app.cell
+def _():
+    return
+
+
+@app.cell
+def _(DSP_params, jax, jnp, loss_fn, target_param):
     from copy import deepcopy
     from scipy.ndimage import uniform_filter1d
-    # Assume these are already defined:
-    # - instrument_jit
-    # - target_sound
-    # - noise
-    # - SAMPLE_RATE
-    # - spec_func
-    # - naive_loss
-    # - DSP_params
-    # - target_param
-
-    # Initialize mean and std over the parameter
-    mean = jnp.array([0.0])
-    std = jnp.array([1])
-    learning_rate = 1e-8
-    key1 = jax.random.PRNGKey(0)
-
-    # Get true value to compare
+    # # --- Setup ---
+    sample_rate = 256
+    # target_param = "p"
+    # DSP_params = {"params": {target_param: 0.5}}
+    # target_sound = jnp.cos(jnp.linspace(0, jnp.pi * 4, sample_rate)) * 0.5
     true_value = float(DSP_params.copy()["params"][target_param])
-    # Reward = negative L1 spectral loss
+    # noise = None  # Not used in mock
+
+    # --- Actor-Critic parameters ---
+    mean = jnp.array([0.0])
+    std = jnp.array([1.0])
+    learning_rate = 1e-8
+    critic_lr = 1e-6
+    value_estimate = 0.0
+    key3 = jax.random.PRNGKey(0)
     params = deepcopy(DSP_params)
 
     def reward_fn(param_val): 
         params["params"][target_param] = param_val[0]
         l,_ = loss_fn(params)
         return -l
-        # pred = instrument_jit(params, noise, SAMPLE_RATE)[0]
-        # return -loss_fn(spec_func(pred)[0], spec_func(target_sound))
-
-    # Sample from policy
+    
     def sample_params(key, mean, std):
         return mean + std * jax.random.normal(key, shape=mean.shape)
 
-    # REINFORCE update
     @jax.jit
-    def reinforce_update(mean, std, key1):
-        sampled = sample_params(key1, mean, std)
+    def actor_critic_update(mean, std, value_estimate, key):
+        sampled = sample_params(key, mean, std)
         reward = reward_fn(sampled)
+        advantage = reward - value_estimate
 
-        grad_mean = (sampled - mean) / (std**2) * reward
-        grad_std = ((sampled - mean)**2 - std**2) / (std**3) * reward
+        grad_mean = (sampled - mean) / (std**2) * advantage
+        grad_std = ((sampled - mean)**2 - std**2) / (std**3) * advantage
 
+        new_value = value_estimate + critic_lr * (reward - value_estimate)
         new_mean = mean + learning_rate * grad_mean
         new_std = std + learning_rate * grad_std
-        return new_mean, new_std, reward, sampled
 
-    # Optimization loop
-    rewards = []
-    param_vals = []
+        return new_mean, new_std, new_value, reward, sampled
 
+    # --- Training loop ---
+    rewards, param_vals = [], []
     for step in range(1000):
-        key1, subkey = jax.random.split(key1)
-        mean, std, reward, sampled = reinforce_update(mean, std, subkey)
+        key3, subkey = jax.random.split(key3)
+        mean, std, value_estimate, reward, sampled = actor_critic_update(mean, std, value_estimate, subkey)
         rewards.append(float(reward))
         param_vals.append(float(sampled[0]))
-        if step % 10 == 0:
-            print(f"Step {step:3d} | Param: {sampled[0]:.4f} | Reward: {reward:.6f}) | Mean,std: {mean,std}")
+        if step % 50 == 0:
+            print(f"Step {step:3d} | Param: {sampled[0]:.4f} | Reward: {reward:.6f} | Mean,std: {mean.astype(float),std.astype(float)}\n", end='\r', flush=True)
 
-    window_size = 25
-    rewards_smooth = uniform_filter1d(rewards, size=window_size)
-    param_vals_smooth = uniform_filter1d(param_vals, size=window_size)
+    # --- Smooth and Plot ---
+    rewards_smooth = uniform_filter1d(rewards, size=25)
+    param_vals_smooth = uniform_filter1d(param_vals, size=25)
 
+    return param_vals_smooth, rewards_smooth, true_value
+
+
+@app.cell
+def _(param_vals_smooth, plt, rewards_smooth, true_value):
     # Plotting
     plt.figure(figsize=(12, 4))
 
@@ -307,7 +377,6 @@ def _(DSP_params, jax, jnp, loss_fn, plt, target_param):
 
     plt.tight_layout()
     plt.show()
-
     return
 
 
