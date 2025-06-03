@@ -380,5 +380,10 @@ def _(param_vals_smooth, plt, rewards_smooth, true_value):
     return
 
 
+@app.cell
+def _():
+    return
+
+
 if __name__ == "__main__":
     app.run()
