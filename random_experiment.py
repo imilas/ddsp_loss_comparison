@@ -156,8 +156,8 @@ def _(args):
         true_var2 = int(random.uniform(var2_range[0], var2_range[1]))
 
 
-    rand_prog_code, var1_value, var2_value = choose_program(args.program_id, var1_range, var2_range)
-    true_prog_code, true_var1_value, true_var2_value = choose_program(args.program_id,var1_range, var2_range,true_var1,true_var2)
+    rand_prog_code, var1_value, var2_value = choose_program(args.program_id, var1_range, var2_range) # random start
+    true_prog_code, true_var1_value, true_var2_value = choose_program(args.program_id,var1_range, var2_range,true_var1,true_var2) # target range
     print("Program Code:\n", true_prog_code)
     print("init vars",var1_value,var2_value)
     print("true vars",true_var1_value,true_var2_value)
