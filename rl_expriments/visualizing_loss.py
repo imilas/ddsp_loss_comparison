@@ -182,19 +182,9 @@ def _(
 
     grad_fn = jax.jit(jax.value_and_grad(loss_fn, has_aux=True))
     (loss, pred), grads = grad_fn(programs[0])
-    return (grad_fn,)
-
-
-@app.cell
-def _(grad_fn, programs):
-    lpg = [grad_fn(p) for p in programs]
-    return (lpg,)
-
-
-@app.cell
-def _(lpg):
-    g = [list(p[1]["params"].values())[0] for p in lpg]
-    return (g,)
+    lpg = [grad_fn(p) for p in programs] # (loss,preduct), params for each program
+    g = [list(p[1]["params"].values())[0] for p in lpg] # get grads for each program
+    return g, lpg
 
 
 @app.cell
@@ -219,6 +209,11 @@ def _(DSP_params, g, lpg, np, param_linspace, plt):
     ax1.axvline(x=list(DSP_params["params"].values())[0], color='red', linestyle='--', linewidth=2)
 
     plt.show()
+    return
+
+
+@app.cell
+def _():
     return
 
 
