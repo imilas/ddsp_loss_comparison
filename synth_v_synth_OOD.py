@@ -30,6 +30,7 @@ def _():
     from helper_funcs import faust_to_jax as fj
     from helper_funcs import program_generators as pg
     from helper_funcs import experiment_setup as setup
+    from helper_funcs import loss_landscape_helpers as llh
 
     import matplotlib.pyplot as plt
     import numpy as np
@@ -67,13 +68,13 @@ def _():
         SAMPLE_RATE,
         args,
         clip_spec,
-        copy,
         dtw_jax,
         experiment,
         fj,
         jax,
         jnp,
         kernel,
+        llh,
         mo,
         naive_loss,
         np,
@@ -205,7 +206,7 @@ def _(
     real_params = {k: [] for k in variable_names}  # will record parameters while searching
     norm_params = {k: [] for k in variable_names}  # will record parameters while searching
 
-    for n in range(200):
+    for n in range(30):
         state, loss = train_step(state)
         if n % 1 == 0:
             audio, mod_vars = imitator_instrument_jit(state.params, imitator_noise, SAMPLE_RATE)
@@ -259,97 +260,53 @@ def _(fj, mo, sounds, target_sound):
 
 
 @app.cell
-def _(copy, jnp, target_instrument_params):
-    def fill_template(template, pkey, fill_values):
-        template = template.copy()
-        """template is the model parameter, pkey is the parameter we want to change, and fill_value is the value we assign to the parameter
-        """
-        for i, k in enumerate(pkey):
-            template["params"][k] = fill_values[i]
-        return template
-    
-    target_param = list(target_instrument_params["params"].keys())[0]
-    param_linspace = jnp.array(jnp.linspace(-0.99, 1.0, 300, endpoint=False))
-    programs = [
-        fill_template(copy.deepcopy(target_instrument_params), [target_param], [x])
-        for x in param_linspace
-    ]
+def _(grad_fn, imitator_instrument_params, llh):
+    grids,grid_losses,grad_losses = llh.loss_grad_grids(imitator_instrument_params,[10,10],grad_fn)
+    return grad_losses, grid_losses, grids
+
+
+@app.cell
+def _(grad_losses, grid_losses, grids, imitator_instrument_params, llh):
+    llh.loss_3d_plot(grids,grid_losses,grad_losses,list(imitator_instrument_params["params"].keys()))
     return
 
 
 @app.cell
-def _(np):
-    import itertools
+def _(
+    grad_losses,
+    grid_losses,
+    grids,
+    imitator_instrument_params,
+    llh,
+    target_instrument_params,
+):
+    myplot = llh.loss_2d_plot(grids,grid_losses,grad_losses,list(imitator_instrument_params["params"].keys()),list(target_instrument_params["params"].values()))
+    # myplot.plot(*list(target_instrument_params["params"].values()), 'ro', markersize=6, label='Target Params')
+    myplot.show()
 
-    def generate_param_grid(param_ranges, granularities):
-        """
-        param_ranges: dict like {"param_name": (min, max)}
-        granularities: dict like {"param_name": N}
-    
-        Returns: list of dictionaries, each representing one param combination
-        """
-        assert param_ranges.keys() == granularities.keys()
-    
-        # Create list of values for each param
-        param_values = {
-            k: np.linspace(param_ranges[k][0], param_ranges[k][1], granularities[k])
-            for k in param_ranges
-        }
-
-        # Get Cartesian product of all parameter values
-        all_combinations = list(itertools.product(*param_values.values()))
-    
-        # Convert tuples to dictionaries
-        param_names = list(param_values.keys())
-        grid = [dict(zip(param_names, combo)) for combo in all_combinations]
-        return grid
-    param_ranges = {
-        "_dawdreamer/amp": (-1, 1),
-        "_dawdreamer/carrier": (-1, 1),
-    }
-    granularities = {
-        "_dawdreamer/amp": 20,
-        "_dawdreamer/carrier": 20,
-    }
-
-    grid = generate_param_grid(param_ranges, granularities)
-    print(f"Generated {len(grid)} combinations.")
-    print(grid)  # Example output
-    return granularities, param_ranges
-
-
-@app.cell
-def _():
     return
 
 
 @app.cell
-def _(grad_fn, granularities, np, param_ranges):
-    from matplotlib import cm
-    # Create value grids
-    amp_vals = np.linspace(*param_ranges["_dawdreamer/amp"], granularities["_dawdreamer/amp"])
-    carrier_vals = np.linspace(*param_ranges["_dawdreamer/carrier"], granularities["_dawdreamer/carrier"])
-    loss_grid = np.zeros((len(carrier_vals), len(amp_vals)))
-
-    # Evaluate loss for each parameter combination
-    for i, c in enumerate(carrier_vals):
-        for j, a in enumerate(amp_vals):
-            program = {
-                "params": {
-                    "_dawdreamer/amp": a,
-                    "_dawdreamer/carrier": c,
-                }
-            }
-            (l, _), _ = grad_fn(program)
-            loss_grid[i, j] = l
-
-
-    return amp_vals, carrier_vals, cm, loss_grid
-
-
-@app.cell
 def _():
-    # target_amp = target_instrument_params["params"]["_dawdreamer/amp"]
+    # from matplotlib import cm
+    # # Create value grids
+    # amp_vals = np.linspace(*param_ranges["_dawdreamer/amp"], granularities["_dawdreamer/amp"])
+    # carrier_vals = np.linspace(*param_ranges["_dawdreamer/carrier"], granularities["_dawdreamer/carrier"])
+    # loss_grid = np.zeros((len(carrier_vals), len(amp_vals)))
+
+    # # Evaluate loss for each parameter combination
+    # for i, c in enumerate(carrier_vals):
+    #     for j, a in enumerate(amp_vals):
+    #         program = {
+    #             "params": {
+    #                 "_dawdreamer/amp": a,
+    #                 "_dawdreamer/carrier": c,
+    #             }
+    #         }
+    #         (l, _), _ = grad_fn(program)
+    #         loss_grid[i, j] = l
+    # mp = target_instrument_params["params"]["_dawdreamer/amp"]
     # target_carrier = target_instrument_params["params"]["_dawdreamer/carrier"]
 
     # # Plot 2D heatmap
@@ -359,9 +316,7 @@ def _():
     # plt.colorbar(cols, ax=ax, label='Loss')
 
     # # Add target point and origin
-    # ax.plot(target_amp, target_carrier, 'ro', markersize=6, label='Target Params')
-    # ax.plot(0, 0, 'bo', markersize=6, label='Origin (0,0)')
-
+    # # ax.plot(target_amp, target_carrier, 'ro', markersize=6, label='Target Params')
     # # Labels and formatting
     # ax.set_xlabel("amp")
     # ax.set_ylabel("carrier")
@@ -369,48 +324,6 @@ def _():
     # ax.legend()
     # plt.tight_layout()
     # plt.show()
-    return
-
-
-@app.cell
-def _(
-    amp_vals,
-    carrier_vals,
-    cm,
-    loss_grid,
-    np,
-    plt,
-    target_instrument_params,
-):
-    # Create meshgrid for plotting
-    A, C = np.meshgrid(amp_vals, carrier_vals)
-
-    # Plot 3D surface
-    fig = plt.figure(figsize=(10, 6))
-    ax = fig.add_subplot(111, projection='3d')
-    surf = ax.plot_surface(A, C, loss_grid, cmap=cm.viridis)
-
-    # Coordinates for the vertical line
-    x0 = 0
-    y0 = 0
-    target_amp = target_instrument_params["params"]["_dawdreamer/amp"]
-    target_carrier = target_instrument_params["params"]["_dawdreamer/carrier"]
-
-
-    # Draw vertical line from z=0 to loss_val
-    ax.plot(
-        [target_amp, target_amp],           # X: constant
-        [target_carrier, target_carrier],           # Y: constant
-        [0, np.max(loss_grid)],      # Z: from base to top
-        color='red', linewidth=2, label='(0, 0) Reference'
-    )
-
-    ax.set_xlabel("amp")
-    ax.set_ylabel("carrier")
-    ax.set_zlabel("loss")
-    ax.set_title("Loss surface over parameter grid")
-    plt.tight_layout()
-    plt.show()
     return
 
 
