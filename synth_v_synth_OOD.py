@@ -24,7 +24,7 @@ def _():
     import optax
     from flax import linen as nn
     from flax.training import train_state  # Useful dataclass to keep train state
-
+    import dm_pix
     import marimo as mo
 
     from helper_funcs import faust_to_jax as fj
@@ -47,7 +47,7 @@ def _():
     parser = argparse.ArgumentParser(description='Process a loss function name.')
     parser.add_argument('--loss_fn', type=str, help='the name of the loss function. One of:  L1_Spec , DTW_Onset, SIMSE_Spec, JTFS',default="L1_Spec")
     parser.add_argument('--learning_rate', type=float, help='learning rate',default=0.01)
-    parser.add_argument('--program_id', type=int, choices=[0, 1, 2, 3], default = 0, help="The program ID to select (0, 1, 2, or 3)")
+    parser.add_argument('--ood_scenario', type=int, choices=[0,1,2,3], default = 0, help="ood scenario")
     args, unknown = parser.parse_known_args()
     spec_func = setup.spec_func
     clip_spec = setup.clip_spec
@@ -59,7 +59,7 @@ def _():
 
     # L1_Spec , DTW_Onset, SIMSE_Spec, JTFS
     experiment = {
-        "program_id": args.program_id,
+        "ood_scenario": args.ood_scenario,
         "loss": args.loss_fn,
         "lr": 0.045
     }
@@ -68,6 +68,7 @@ def _():
         SAMPLE_RATE,
         args,
         clip_spec,
+        dm_pix,
         dtw_jax,
         experiment,
         fj,
@@ -137,7 +138,7 @@ def _(
     spec_func,
     target_sound,
 ):
-    args.loss_fn = "DTW_Onset"
+    args.loss_fn = "SIMSE_Spec"
     lfn = args.loss_fn
     def loss_fn(params):
         pred = imitator_instrument_jit(params, imitator_noise, SAMPLE_RATE)[0]
@@ -284,46 +285,6 @@ def _(
     # myplot.plot(*list(target_instrument_params["params"].values()), 'ro', markersize=6, label='Target Params')
     myplot.show()
 
-    return
-
-
-@app.cell
-def _():
-    # from matplotlib import cm
-    # # Create value grids
-    # amp_vals = np.linspace(*param_ranges["_dawdreamer/amp"], granularities["_dawdreamer/amp"])
-    # carrier_vals = np.linspace(*param_ranges["_dawdreamer/carrier"], granularities["_dawdreamer/carrier"])
-    # loss_grid = np.zeros((len(carrier_vals), len(amp_vals)))
-
-    # # Evaluate loss for each parameter combination
-    # for i, c in enumerate(carrier_vals):
-    #     for j, a in enumerate(amp_vals):
-    #         program = {
-    #             "params": {
-    #                 "_dawdreamer/amp": a,
-    #                 "_dawdreamer/carrier": c,
-    #             }
-    #         }
-    #         (l, _), _ = grad_fn(program)
-    #         loss_grid[i, j] = l
-    # mp = target_instrument_params["params"]["_dawdreamer/amp"]
-    # target_carrier = target_instrument_params["params"]["_dawdreamer/carrier"]
-
-    # # Plot 2D heatmap
-    # A, C = np.meshgrid(amp_vals, carrier_vals)
-    # fig, ax = plt.subplots(figsize=(10, 6))
-    # cols = ax.pcolormesh(A, C, loss_grid, shading='auto', cmap=cm.viridis)
-    # plt.colorbar(cols, ax=ax, label='Loss')
-
-    # # Add target point and origin
-    # # ax.plot(target_amp, target_carrier, 'ro', markersize=6, label='Target Params')
-    # # Labels and formatting
-    # ax.set_xlabel("amp")
-    # ax.set_ylabel("carrier")
-    # ax.set_title("Loss heatmap over parameter grid")
-    # ax.legend()
-    # plt.tight_layout()
-    # plt.show()
     return
 
 
