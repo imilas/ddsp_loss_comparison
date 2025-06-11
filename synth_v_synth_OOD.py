@@ -35,6 +35,8 @@ def _():
     import matplotlib.pyplot as plt
     import numpy as np
     import random
+    import pickle
+    import uuid
 
     default_device = "cpu"  # or 'gpu'
     jax.config.update("jax_platform_name", default_device)
@@ -45,8 +47,8 @@ def _():
 
     # experiment setup
     parser = argparse.ArgumentParser(description='Process a loss function name.')
-    parser.add_argument('--loss_fn', type=str, help='the name of the loss function. One of:  L1_Spec , DTW_Onset, SIMSE_Spec, JTFS',default="L1_Spec")
-    parser.add_argument('--learning_rate', type=float, help='learning rate',default=0.01)
+    parser.add_argument('--loss_fn', type=str, help='the name of the loss function. One of:  L1_Spec , DTW_Onset, JTFS',default="L1_Spec")
+    parser.add_argument('--learning_rate', type=float, help='learning rate',default=0.045)
     parser.add_argument('--ood_scenario', type=int, choices=[0,1,2,3], default = 0, help="ood scenario")
     args, unknown = parser.parse_known_args()
     spec_func = setup.spec_func
@@ -56,12 +58,12 @@ def _():
     scat_jax = setup.scat_jax
     kernel = setup.kernel
     onset_1d = setup.onset_1d
-
+    MSS_loss = setup.MSS_loss
     # L1_Spec , DTW_Onset, SIMSE_Spec, JTFS
     experiment = {
         "ood_scenario": args.ood_scenario,
         "loss": args.loss_fn,
-        "lr": 0.045
+        "lr": args.learning_rate
     }
 
     return (
@@ -75,24 +77,27 @@ def _():
         jax,
         jnp,
         kernel,
-        llh,
         mo,
         naive_loss,
         np,
         onset_1d,
         optax,
         pg,
+        pickle,
         plt,
         scat_jax,
+        setup,
         spec_func,
         train_state,
+        uuid,
     )
 
 
 @app.cell
-def _(SAMPLE_RATE, fj, jax, mo, pg):
-    target_prog_code, target_var1, target_var2 = pg.generate_program_3((1, 20),(1,250))
-    imitator_prog_code, imitator_va1, imitator_var2 = pg.generate_program_3((1, 20),(1000, 5000))
+def _(SAMPLE_RATE, experiment, fj, jax, mo, pg):
+    if experiment["ood_scenario"] == 0:
+        target_prog_code, target_var1, target_var2 = pg.generate_program_3((1, 10),(1,250))
+        imitator_prog_code, imitator_va1, imitator_var2 = pg.generate_program_3((1, 10),(1000, 5000))
 
     # imitator_prog_code, imitator_va1, imitator_var2 = pg.generate_program_2((0.1, 1),  (1, 20))
 
@@ -115,7 +120,6 @@ def _(SAMPLE_RATE, fj, jax, mo, pg):
         imitator_instrument_jit,
         imitator_instrument_params,
         imitator_noise,
-        target_instrument_params,
         target_sound,
     )
 
@@ -138,7 +142,7 @@ def _(
     spec_func,
     target_sound,
 ):
-    args.loss_fn = "SIMSE_Spec"
+    # args.loss_fn = "DTW_Onset"
     lfn = args.loss_fn
     def loss_fn(params):
         pred = imitator_instrument_jit(params, imitator_noise, SAMPLE_RATE)[0]
@@ -207,7 +211,7 @@ def _(
     real_params = {k: [] for k in variable_names}  # will record parameters while searching
     norm_params = {k: [] for k in variable_names}  # will record parameters while searching
 
-    for n in range(30):
+    for n in range(200):
         state, loss = train_step(state)
         if n % 1 == 0:
             audio, mod_vars = imitator_instrument_jit(state.params, imitator_noise, SAMPLE_RATE)
@@ -221,11 +225,32 @@ def _(
             losses.append(loss)
             # print(n, loss, state.params)
             print(n, end="\r")
-    return losses, real_params, sounds
+    return (sounds,)
 
 
 @app.cell
-def _(losses, plt, real_params):
+def _(experiment, pickle, setup, sounds, target_sound, uuid):
+
+    experiment["Multi_Spec"] = setup.MSS_loss(sounds[-1], target_sound,setup.spec_funs)
+    # experiment["L1_Spec"] = naive_loss(spec_func(sounds[-1]), spec_func(target_sound))
+    # experiment["DTW_Onset"] = dtw_jax(onset_1d(target_sound, kernel, spec_func), onset_1d(sounds[-1], kernel, spec_func))
+    # experiment["JTFS"] = naive_loss(scat_jax(target_sound), scat_jax(sounds[-1]))
+    experiment["target_sound"] = target_sound
+    experiment["output_sound"] = sounds[-1]
+    # Generate a random file name
+    print(experiment)
+    file_name = f"./results/out_domain/%s_%s_%s.pkl"%(experiment["loss"],experiment["ood_scenario"],uuid.uuid4())
+
+    # Save the dictionary with the random file name
+    with open(file_name, "wb") as file:
+        pickle.dump(experiment, file)
+
+    print(f"File saved as: {file_name}")
+    return
+
+
+@app.cell
+def _(plt):
     def plot_params_and_loss(real_params, losses):
         variable_names = list(real_params.keys())
         num_vars = len(variable_names)
@@ -248,42 +273,24 @@ def _(losses, plt, real_params):
         plt.show()
 
     # Example call:
-    plot_params_and_loss(real_params, losses)
+    # plot_params_and_loss(real_params, losses)
     return
 
 
 @app.cell
-def _(fj, mo, sounds, target_sound):
-    mo.output.clear()
-    fj.show_audio(target_sound)
-    fj.show_audio(sounds[-1])
+def _():
+    # mo.output.clear()
+    # fj.show_audio(target_sound)
+    # fj.show_audio(sounds[-1])
     return
 
 
 @app.cell
-def _(grad_fn, imitator_instrument_params, llh):
-    grids,grid_losses,grad_losses = llh.loss_grad_grids(imitator_instrument_params,[10,10],grad_fn)
-    return grad_losses, grid_losses, grids
-
-
-@app.cell
-def _(grad_losses, grid_losses, grids, imitator_instrument_params, llh):
-    llh.loss_3d_plot(grids,grid_losses,grad_losses,list(imitator_instrument_params["params"].keys()))
-    return
-
-
-@app.cell
-def _(
-    grad_losses,
-    grid_losses,
-    grids,
-    imitator_instrument_params,
-    llh,
-    target_instrument_params,
-):
-    myplot = llh.loss_2d_plot(grids,grid_losses,grad_losses,list(imitator_instrument_params["params"].keys()),list(target_instrument_params["params"].values()))
-    # myplot.plot(*list(target_instrument_params["params"].values()), 'ro', markersize=6, label='Target Params')
-    myplot.show()
+def _():
+    # grids,grid_losses,grad_losses = llh.loss_grad_grids(imitator_instrument_params,[10,10],grad_fn)
+    # llh.loss_3d_plot(grids,grid_losses,grad_losses,list(imitator_instrument_params["params"].keys()))
+    # llh.loss_2d_plot(grids,grid_losses,grad_losses,list(imitator_instrument_params["params"].keys()),list(target_instrument_params["params"].values()))
+    # # myplot.plot(*list(target_instrument_params["params"].values()), 'ro', markersize=6, label='Target Params')
 
     return
 
