@@ -225,7 +225,7 @@ def _(
             losses.append(loss)
             # print(n, loss, state.params)
             print(n, end="\r")
-    return (sounds,)
+    return n, sounds
 
 
 @app.cell
@@ -278,20 +278,16 @@ def _(plt):
 
 
 @app.cell
-def _():
-    # mo.output.clear()
-    # fj.show_audio(target_sound)
-    # fj.show_audio(sounds[-1])
+def _(fj, mo, sounds, target_sound):
+    mo.output.clear()
+    fj.show_audio(target_sound)
+    fj.show_audio(sounds[-1])
     return
 
 
 @app.cell
-def _():
-    # grids,grid_losses,grad_losses = llh.loss_grad_grids(imitator_instrument_params,[10,10],grad_fn)
-    # llh.loss_3d_plot(grids,grid_losses,grad_losses,list(imitator_instrument_params["params"].keys()))
-    # llh.loss_2d_plot(grids,grid_losses,grad_losses,list(imitator_instrument_params["params"].keys()),list(target_instrument_params["params"].values()))
-    # # myplot.plot(*list(target_instrument_params["params"].values()), 'ro', markersize=6, label='Target Params')
-
+def _(n):
+    n
     return
 
 

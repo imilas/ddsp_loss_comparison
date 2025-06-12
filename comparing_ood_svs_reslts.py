@@ -17,16 +17,34 @@ def _():
     from statsmodels.stats.multicomp import pairwise_tukeyhsd
     import pandas as pd
     from itertools import combinations
-    return isnan, np, pd, plt, sns
+    # Kruskall wallic per program
+    from operator import itemgetter
+    from scipy.stats import kruskal
+    import os
+    import pickle
+    import plotly.graph_objects as go
+    from rpy2.robjects.packages import importr
+    from rpy2.robjects import pandas2ri
+    return (
+        go,
+        importr,
+        itemgetter,
+        kruskal,
+        np,
+        os,
+        pandas2ri,
+        pd,
+        pickle,
+        plt,
+        sns,
+    )
 
 
 @app.cell
-def _():
-    import os
-    import pickle
+def _(os, pickle):
 
     # Directory containing pickle files
-    directory = "./results/in_domain"
+    directory = "./results/out_domain"
 
     # List to store loaded dictionaries
     d = []
@@ -50,64 +68,52 @@ def _():
 
 
 @app.cell
-def _():
-    lfn_names = ['DTW_Onset','L1_Spec' ,'SIMSE_Spec', 'JTFS']
-    program_num = 1
-    performance_measure = "MSS"
-    # performance_measure = "P-Loss"
-    return lfn_names, performance_measure, program_num
-
-
-@app.cell
-def _():
+def _(d):
+    d[-1]
     return
 
 
 @app.cell
-def _(d, isnan, lfn_names, np, performance_measure, program_num):
-    def get_p_error(e):
-        """calculate p-loss given an experiment dictionary"""
-        p1 = np.array(list(e["true_params"]["params"].values()))
-        p2 = np.array(list(e["norm_params"].values()))[:,-1]
-        return np.sqrt(np.sum((p1-p2)**2))
+def _():
+    lfn_names = ['DTW_Onset','L1_Spec' ,'SIMSE_Spec', 'JTFS']
+    ood_scenario = 0
+    performance_measure = "MSS"
+    return lfn_names, ood_scenario
 
-    def filter_experiments(d,loss_fn_name,prog_num):
-        return [x for x in d if x["loss"]==loss_fn_name and x["program_id"]==prog_num]
 
-    if performance_measure == "MSS":
-        g = [[x["Multi_Spec"] for x in filter_experiments(d,lfn_name,program_num)] for lfn_name in lfn_names]
-    else:
-        g = [[get_p_error(x) for x in filter_experiments(d,lfn_name,program_num)] for lfn_name in lfn_names]
-        g = [[2 if isnan(i) else i for i in j ] for j in g]
+@app.cell
+def _(d, lfn_names, ood_scenario):
+    def filter_experiments(d,loss_fn_name,ood_scenario):
+        return [x for x in d if x["loss"]==loss_fn_name and x["ood_scenario"]==ood_scenario]
+
+    g = [[x["Multi_Spec"] for x in filter_experiments(d,lfn_name,ood_scenario)] for lfn_name in lfn_names]
 
     g = [[float(element) for element in sublist] for sublist in g] # to remove jax types from floats
 
     [len(e) for e in g]
-    return g, get_p_error
+    return (g,)
 
 
 @app.cell
-def _(d, get_p_error, pd):
-    # Kruskall wallic per program
-    from operator import itemgetter
-    columns = ['program_id', 'loss', 'Multi_Spec']
+def _(g):
+    g
+    return
+
+
+@app.cell
+def _(d, itemgetter, pd):
+    columns = ['ood_scenario', 'loss', 'Multi_Spec']
     def get_mss_ploss(x):
-        return *itemgetter(*columns)(x),get_p_error(x)
+        return itemgetter(*columns)(x)
+
     all_results_array = [get_mss_ploss(x) for x in d]
-    evals_df = pd.DataFrame(all_results_array,columns=columns+["P_Loss"])
+    evals_df = pd.DataFrame(all_results_array,columns=columns)
     evals_df
     return (evals_df,)
 
 
 @app.cell
-def _(d):
-    d[0]
-    return
-
-
-@app.cell
-def _(evals_df):
-    from scipy.stats import kruskal
+def _(evals_df, kruskal):
     def kruskal_by_loss_group(df, value_column):
         """
         Perform Kruskal-Wallis test on `value_column` for each group in the 'loss' column.
@@ -127,9 +133,9 @@ def _(evals_df):
         stat, p_value = kruskal(*grouped_values)
         return stat, p_value
 
-    for pid in evals_df["program_id"].unique():
-        for eval_method in ["Multi_Spec","P_Loss"]:
-            print("program %d evaluation method %s"%(pid,eval_method),kruskal_by_loss_group(evals_df[evals_df["program_id"]==pid],eval_method))
+    for pid in evals_df["ood_scenario"].unique():
+        for eval_method in ["Multi_Spec"]:
+            print("program %d evaluation method %s"%(pid,eval_method),kruskal_by_loss_group(evals_df[evals_df["ood_scenario"]==pid],eval_method))
     return
 
 
@@ -166,9 +172,7 @@ def _(g, lfn_names, np, pd):
 
 
 @app.cell
-def _(boot_df, np, pd, plt, sns):
-    from rpy2.robjects.packages import importr
-    from rpy2.robjects import pandas2ri
+def _(boot_df, importr, np, pandas2ri, pd, plt, sns):
 
     # Activate automatic conversion between pandas and R
     pandas2ri.activate()
@@ -214,8 +218,8 @@ def _(boot_df, np, pd, plt, sns):
 
 
 @app.cell
-def _(plot_data):
-    import plotly.graph_objects as go
+def _(go, plot_data):
+
 
     # Sort models alphabetically
     model_order = sorted(plot_data["Model"].unique())
@@ -277,11 +281,6 @@ def _(plot_data):
     # Save the figure as a PDF
     # fig.write_image("./plots/npsk_%s_%d.png" % (performance_measure,program_num), engine="kaleido",scale=5)
     fig.show()
-    return
-
-
-@app.cell
-def _():
     return
 
 
