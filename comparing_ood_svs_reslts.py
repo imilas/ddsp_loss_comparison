@@ -28,6 +28,7 @@ def _():
     return (
         go,
         importr,
+        isnan,
         itemgetter,
         kruskal,
         np,
@@ -77,16 +78,22 @@ def _(d):
 def _():
     lfn_names = ['DTW_Onset','L1_Spec' ,'SIMSE_Spec', 'JTFS']
     ood_scenario = 0
+    performance_measure = "P_Loss"
     performance_measure = "MSS"
-    return lfn_names, ood_scenario
+    return lfn_names, ood_scenario, performance_measure
 
 
 @app.cell
-def _(d, lfn_names, ood_scenario):
+def _(d, get_p_error_amp, isnan, lfn_names, ood_scenario, performance_measure):
     def filter_experiments(d,loss_fn_name,ood_scenario):
         return [x for x in d if x["loss"]==loss_fn_name and x["ood_scenario"]==ood_scenario]
 
-    g = [[x["Multi_Spec"] for x in filter_experiments(d,lfn_name,ood_scenario)] for lfn_name in lfn_names]
+    if performance_measure == "MSS":
+        g = [[x["Multi_Spec"] for x in filter_experiments(d,lfn_name,ood_scenario)] for lfn_name in lfn_names]
+    else:
+        g = [[get_p_error_amp(x) for x in filter_experiments(d,lfn_name,ood_scenario)] for lfn_name in lfn_names]
+        g = [[2 if isnan(i) else i for i in j ] for j in g]
+
 
     g = [[float(element) for element in sublist] for sublist in g] # to remove jax types from floats
 
@@ -95,21 +102,29 @@ def _(d, lfn_names, ood_scenario):
 
 
 @app.cell
-def _(g):
-    g
-    return
+def _(d, itemgetter, np, pd):
+    def get_p_error(e):
+        """calculate p-loss given an experiment dictionary"""
+        p1 = np.array(list(e["true_params"]["params"].values()))
+        p2 = np.array(list(e["final_params"]["params"].values()))
+        return np.sqrt(np.sum((p1-p2)**2))
 
-
-@app.cell
-def _(d, itemgetter, pd):
-    columns = ['ood_scenario', 'loss', 'Multi_Spec']
+    def get_p_error_amp(e):
+        """calculate p-loss given an experiment dictionary"""
+        # p1 = np.array(list(e["true_params"]["params"].values()))
+        # p2 = np.array(list(e["final_params"]["params"].values()))
+        p1 = np.array(e["true_params"]["params"]["_dawdreamer/amp"])
+        p2 = np.array(e["final_params"]["params"]["_dawdreamer/amp"])
+        return np.sqrt((p1-p2)**2)
+    
+    columns = ['ood_scenario', 'loss', 'Multi_Spec',]
     def get_mss_ploss(x):
-        return itemgetter(*columns)(x)
+        return *itemgetter(*columns)(x),get_p_error_amp(x)
 
     all_results_array = [get_mss_ploss(x) for x in d]
-    evals_df = pd.DataFrame(all_results_array,columns=columns)
+    evals_df = pd.DataFrame(all_results_array,columns=columns+["P_Loss"])
     evals_df
-    return (evals_df,)
+    return evals_df, get_p_error_amp
 
 
 @app.cell
@@ -281,6 +296,11 @@ def _(go, plot_data):
     # Save the figure as a PDF
     # fig.write_image("./plots/npsk_%s_%d.png" % (performance_measure,program_num), engine="kaleido",scale=5)
     fig.show()
+    return
+
+
+@app.cell
+def _():
     return
 
 

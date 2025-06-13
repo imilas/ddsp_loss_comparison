@@ -48,8 +48,8 @@ def _():
     # experiment setup
     parser = argparse.ArgumentParser(description='Process a loss function name.')
     parser.add_argument('--loss_fn', type=str, help='the name of the loss function. One of:  L1_Spec , DTW_Onset, JTFS',default="L1_Spec")
-    parser.add_argument('--learning_rate', type=float, help='learning rate',default=0.045)
-    parser.add_argument('--ood_scenario', type=int, choices=[0,1,2,3], default = 0, help="ood scenario")
+    parser.add_argument('--learning_rate', type=float, help='learning rate',default=0.04)
+    parser.add_argument('--ood_scenario', type=float, default = 0, help="ood scenario")
     args, unknown = parser.parse_known_args()
     spec_func = setup.spec_func
     clip_spec = setup.clip_spec
@@ -96,8 +96,8 @@ def _():
 @app.cell
 def _(SAMPLE_RATE, experiment, fj, jax, mo, pg):
     if experiment["ood_scenario"] == 0:
-        target_prog_code, target_var1, target_var2 = pg.generate_program_3((1, 10),(1,250))
-        imitator_prog_code, imitator_va1, imitator_var2 = pg.generate_program_3((1, 10),(1000, 5000))
+        target_prog_code, target_var1, target_var2 = pg.generate_program_3((1, 20),(1,250))
+        imitator_prog_code, imitator_va1, imitator_var2 = pg.generate_program_3((1, 20),(1000, 5000))
 
     # imitator_prog_code, imitator_va1, imitator_var2 = pg.generate_program_2((0.1, 1),  (1, 20))
 
@@ -120,6 +120,7 @@ def _(SAMPLE_RATE, experiment, fj, jax, mo, pg):
         imitator_instrument_jit,
         imitator_instrument_params,
         imitator_noise,
+        target_instrument_params,
         target_sound,
     )
 
@@ -225,16 +226,31 @@ def _(
             losses.append(loss)
             # print(n, loss, state.params)
             print(n, end="\r")
-    return n, sounds
+    return sounds, state
 
 
 @app.cell
-def _(experiment, pickle, setup, sounds, target_sound, uuid):
+def _(state, target_instrument_params):
+    state.params,target_instrument_params
 
+
+    return
+
+
+@app.cell
+def _(
+    experiment,
+    pickle,
+    setup,
+    sounds,
+    state,
+    target_instrument_params,
+    target_sound,
+    uuid,
+):
+    experiment["true_params"] = target_instrument_params
+    experiment["final_params"] = state.params
     experiment["Multi_Spec"] = setup.MSS_loss(sounds[-1], target_sound,setup.spec_funs)
-    # experiment["L1_Spec"] = naive_loss(spec_func(sounds[-1]), spec_func(target_sound))
-    # experiment["DTW_Onset"] = dtw_jax(onset_1d(target_sound, kernel, spec_func), onset_1d(sounds[-1], kernel, spec_func))
-    # experiment["JTFS"] = naive_loss(scat_jax(target_sound), scat_jax(sounds[-1]))
     experiment["target_sound"] = target_sound
     experiment["output_sound"] = sounds[-1]
     # Generate a random file name
@@ -278,16 +294,16 @@ def _(plt):
 
 
 @app.cell
-def _(fj, mo, sounds, target_sound):
-    mo.output.clear()
-    fj.show_audio(target_sound)
-    fj.show_audio(sounds[-1])
+def _():
+    # mo.output.clear()
+    # fj.show_audio(target_sound)
+    # fj.show_audio(sounds[-1])
     return
 
 
 @app.cell
-def _(n):
-    n
+def _():
+    # n
     return
 
 
