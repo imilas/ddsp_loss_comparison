@@ -6,9 +6,15 @@ import numpy as np
 import io
 import random
 from scipy.io.wavfile import write
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("data_folder", type=str,nargs="?",default="hearing_test/in_domain", help="Path to folder containing .pkl files")
+args = parser.parse_args()
+
+DATA_FOLDER = args.data_folder
 
 # Paths
-DATA_FOLDER = "hearing_test/"  # Folder containing .pkl files
 SAVE_FILE = "similarity_ratings.json"
 SAMPLE_RATE = 44100  # Adjust based on your data
 

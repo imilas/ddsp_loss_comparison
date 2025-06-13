@@ -234,8 +234,6 @@ def _(boot_df, importr, np, pandas2ri, pd, plt, sns):
 
 @app.cell
 def _(go, plot_data):
-
-
     # Sort models alphabetically
     model_order = sorted(plot_data["Model"].unique())
 
