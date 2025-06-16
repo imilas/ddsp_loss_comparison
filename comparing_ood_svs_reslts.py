@@ -63,29 +63,23 @@ def _(os, pickle):
                 exp_dictionary.pop("output_sound", None)
                 d.append(exp_dictionary)
 
-    # d = [e for e in d if "Multi_Spec" in e]
-    len(d)
+
     return (d,)
-
-
-@app.cell
-def _(d):
-    d[-1]
-    return
 
 
 @app.cell
 def _():
     lfn_names = ['DTW_Onset','L1_Spec' ,'SIMSE_Spec', 'JTFS']
-    ood_scenario = 0
+    ood_scenario = 1
     performance_measure = "P_Loss"
-    performance_measure = "MSS"
+    # performance_measure = "MSS"
     return lfn_names, ood_scenario, performance_measure
 
 
 @app.cell
 def _(d, get_p_error_amp, isnan, lfn_names, ood_scenario, performance_measure):
     def filter_experiments(d,loss_fn_name,ood_scenario):
+        print(loss_fn_name)
         return [x for x in d if x["loss"]==loss_fn_name and x["ood_scenario"]==ood_scenario]
 
     if performance_measure == "MSS":
@@ -102,6 +96,11 @@ def _(d, get_p_error_amp, isnan, lfn_names, ood_scenario, performance_measure):
 
 
 @app.cell
+def _():
+    return
+
+
+@app.cell
 def _(d, itemgetter, np, pd):
     def get_p_error(e):
         """calculate p-loss given an experiment dictionary"""
@@ -111,7 +110,7 @@ def _(d, itemgetter, np, pd):
 
     def get_p_error_amp(e):
         """calculate p-loss given an experiment dictionary"""
-        # p1 = np.array(list(e["true_params"]["params"].values()))
+        # p1 = np.array(list(e["true_params"]["params"].values())) 
         # p2 = np.array(list(e["final_params"]["params"].values()))
         p1 = np.array(e["true_params"]["params"]["_dawdreamer/amp"])
         p2 = np.array(e["final_params"]["params"]["_dawdreamer/amp"])

@@ -15,7 +15,8 @@ args = parser.parse_args()
 DATA_FOLDER = args.data_folder
 
 # Paths
-SAVE_FILE = "similarity_ratings.json"
+SAVE_FILE = DATA_FOLDER+"/"+"similarity_ratings.json"
+print(SAVE_FILE)
 SAMPLE_RATE = 44100  # Adjust based on your data
 
 # Load or initialize ratings in session state
@@ -32,7 +33,7 @@ ratings = st.session_state.ratings  # Alias for easier use
 all_pkl_files = sorted([f for f in os.listdir(DATA_FOLDER) if f.endswith(".pkl")])
 
 # Extract program numbers from filenames (assuming format: *_<program_num>_*.pkl)
-program_numbers = sorted(set(int(f.split("_")[-2]) for f in all_pkl_files))
+program_numbers = sorted(set(float(f.split("_")[-2]) for f in all_pkl_files))
 
 # Dropdown to select program number
 selected_program = st.selectbox("Select Program Number:", program_numbers)
@@ -83,7 +84,7 @@ for pkl_file in pkl_files:
     target_wav = array_to_wav(target_sound, SAMPLE_RATE)
     output_wav = array_to_wav(output_sound, SAMPLE_RATE)
 
-    # st.subheader(f"Survey for {pkl_file}")
+    st.subheader(f"Survey for {pkl_file}")
     
     # Play target sound
     st.write("🔊 Target Sound:")
