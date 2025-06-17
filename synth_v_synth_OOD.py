@@ -102,8 +102,8 @@ def _(SAMPLE_RATE, experiment, fj, jax, mo, pg):
         imitator_prog_code, imitator_va1, imitator_var2 = pg.generate_program_3_variation((1, 15),(2000, 8000))
     if experiment["ood_scenario"] == 1: 
         # amp_cap = random.randint(5,15)
-        target_prog_code, target_var1, target_var2 = pg.generate_program_3((1,15),(30,5000))
-        imitator_prog_code, imitator_va1, imitator_var2 = pg.generate_program_3_variation((1, 15),(30, 5000))
+        target_prog_code, target_var1, target_var2 = pg.generate_program_3_variation((1,15),(30,5000))
+        imitator_prog_code, imitator_va1, imitator_var2 = pg.generate_program_3((1, 15),(30, 5000))
 
     # imitator_prog_code, imitator_va1, imitator_var2 = pg.generate_program_2((0.1, 1),  (1, 20))
 

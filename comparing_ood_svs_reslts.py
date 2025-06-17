@@ -70,7 +70,7 @@ def _(os, pickle):
 @app.cell
 def _():
     lfn_names = ['DTW_Onset','L1_Spec' ,'SIMSE_Spec', 'JTFS']
-    ood_scenario = 1
+    ood_scenario = 0
     performance_measure = "P_Loss"
     # performance_measure = "MSS"
     return lfn_names, ood_scenario, performance_measure
@@ -93,11 +93,6 @@ def _(d, get_p_error_amp, isnan, lfn_names, ood_scenario, performance_measure):
 
     [len(e) for e in g]
     return (g,)
-
-
-@app.cell
-def _():
-    return
 
 
 @app.cell
