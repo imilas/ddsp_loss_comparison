@@ -49,7 +49,7 @@ def _():
     parser = argparse.ArgumentParser(description='Process a loss function name.')
     parser.add_argument('--loss_fn', type=str, help='the name of the loss function. One of:  L1_Spec , DTW_Onset, JTFS',default="DTW_Onset")
     parser.add_argument('--learning_rate', type=float, help='learning rate',default=0.04)
-    parser.add_argument('--ood_scenario', type=int, choices=[0,1,2,3], default = 1, help="ood scenario")
+    parser.add_argument('--ood_scenario', type=int, choices=[0,1,2,3], default = 2, help="ood scenario")
     args, unknown = parser.parse_known_args()
     spec_func = setup.spec_func
     clip_spec = setup.clip_spec
@@ -104,6 +104,10 @@ def _(SAMPLE_RATE, experiment, fj, jax, mo, pg):
         # amp_cap = random.randint(5,15)
         target_prog_code, target_var1, target_var2 = pg.generate_program_3_variation((1,15),(30,5000))
         imitator_prog_code, imitator_va1, imitator_var2 = pg.generate_program_3((1, 15),(30, 5000))
+    if experiment["ood_scenario"] == 2: 
+        # amp_cap = random.randint(5,15)
+        target_prog_code, target_var1, target_var2 = pg.generate_program_3((1,15),(30,5000))
+        imitator_prog_code, imitator_va1, imitator_var2 = pg.generate_program_3_variation((1, 15),(30, 5000))
 
     # imitator_prog_code, imitator_va1, imitator_var2 = pg.generate_program_2((0.1, 1),  (1, 20))
 

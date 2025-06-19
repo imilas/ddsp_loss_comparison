@@ -70,7 +70,7 @@ def _(os, pickle):
 @app.cell
 def _():
     lfn_names = ['DTW_Onset','L1_Spec' ,'SIMSE_Spec', 'JTFS']
-    ood_scenario = 0
+    ood_scenario = 2
     performance_measure = "P_Loss"
     # performance_measure = "MSS"
     return lfn_names, ood_scenario, performance_measure
@@ -98,19 +98,20 @@ def _(d, get_p_error_amp, isnan, lfn_names, ood_scenario, performance_measure):
 @app.cell
 def _(d, itemgetter, np, pd):
     def get_p_error(e):
-        """calculate p-loss given an experiment dictionary"""
         p1 = np.array(list(e["true_params"]["params"].values()))
         p2 = np.array(list(e["final_params"]["params"].values()))
         return np.sqrt(np.sum((p1-p2)**2))
 
     def get_p_error_amp(e):
-        """calculate p-loss given an experiment dictionary"""
-        # p1 = np.array(list(e["true_params"]["params"].values())) 
-        # p2 = np.array(list(e["final_params"]["params"].values()))
         p1 = np.array(e["true_params"]["params"]["_dawdreamer/amp"])
         p2 = np.array(e["final_params"]["params"]["_dawdreamer/amp"])
         return np.sqrt((p1-p2)**2)
-    
+
+    def get_p_error_carrier(e):
+        p1 = np.array(e["true_params"]["params"]["_dawdreamer/carrier"])
+        p2 = np.array(e["final_params"]["params"]["_dawdreamer/carrier"])
+        return np.sqrt((p1-p2)**2)
+
     columns = ['ood_scenario', 'loss', 'Multi_Spec',]
     def get_mss_ploss(x):
         return *itemgetter(*columns)(x),get_p_error_amp(x)
@@ -227,7 +228,9 @@ def _(boot_df, importr, np, pandas2ri, pd, plt, sns):
 
 
 @app.cell
-def _(go, plot_data):
+def _(go, ood_scenario, performance_measure, plot_data):
+    import plotly.io as pio
+    pio.templates.default = "plotly_white"
     # Sort models alphabetically
     model_order = sorted(plot_data["Model"].unique())
 
@@ -259,7 +262,8 @@ def _(go, plot_data):
             side="positive",  # <-- half violin
             points="outliers",
             marker=dict(color=color, outliercolor=color, line=dict(color=color)),
-            width=0.6
+            width=0.6,
+
         ))
 
     # Minimal layout
@@ -283,16 +287,20 @@ def _(go, plot_data):
         margin=dict(l=0.1, r=0.1, t=0, b=0), 
         # template="seaborn",
         width=250,
-        height=175
+        height=175,
+        # plot_bgcolor="white",
+        # paper_bgcolor="white",
+
     )
     # Save the figure as a PDF
-    # fig.write_image("./plots/npsk_%s_%d.png" % (performance_measure,program_num), engine="kaleido",scale=5)
+    fig.write_image("./plots/npsk_ood_%s_%d.png" % (performance_measure,ood_scenario), engine="kaleido",scale=5)
     fig.show()
     return
 
 
 @app.cell
 def _():
+    (9/8) ** 7
     return
 
 
