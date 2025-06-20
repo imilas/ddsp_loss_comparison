@@ -70,14 +70,14 @@ def _(os, pickle):
 @app.cell
 def _():
     lfn_names = ['DTW_Onset','L1_Spec' ,'SIMSE_Spec', 'JTFS']
-    ood_scenario = 2
+    ood_scenario = 3
     performance_measure = "P_Loss"
     # performance_measure = "MSS"
     return lfn_names, ood_scenario, performance_measure
 
 
 @app.cell
-def _(d, get_p_error_amp, isnan, lfn_names, ood_scenario, performance_measure):
+def _(d, get_p_error, isnan, lfn_names, ood_scenario, performance_measure):
     def filter_experiments(d,loss_fn_name,ood_scenario):
         print(loss_fn_name)
         return [x for x in d if x["loss"]==loss_fn_name and x["ood_scenario"]==ood_scenario]
@@ -85,7 +85,7 @@ def _(d, get_p_error_amp, isnan, lfn_names, ood_scenario, performance_measure):
     if performance_measure == "MSS":
         g = [[x["Multi_Spec"] for x in filter_experiments(d,lfn_name,ood_scenario)] for lfn_name in lfn_names]
     else:
-        g = [[get_p_error_amp(x) for x in filter_experiments(d,lfn_name,ood_scenario)] for lfn_name in lfn_names]
+        g = [[get_p_error(x) for x in filter_experiments(d,lfn_name,ood_scenario)] for lfn_name in lfn_names]
         g = [[2 if isnan(i) else i for i in j ] for j in g]
 
 
@@ -96,7 +96,8 @@ def _(d, get_p_error_amp, isnan, lfn_names, ood_scenario, performance_measure):
 
 
 @app.cell
-def _(d, itemgetter, np, pd):
+def _(np, ood_scenario):
+    # what kind of p_loss can we use here?
     def get_p_error(e):
         p1 = np.array(list(e["true_params"]["params"].values()))
         p2 = np.array(list(e["final_params"]["params"].values()))
@@ -112,14 +113,27 @@ def _(d, itemgetter, np, pd):
         p2 = np.array(e["final_params"]["params"]["_dawdreamer/carrier"])
         return np.sqrt((p1-p2)**2)
 
+    def set_p_loss(odd_scenario):
+        if odd_scenario in {0,1,2}:
+            return get_p_error_amp
+        elif odd_scenario in {2,3}:
+            return get_p_error
+   
+    p_loss = set_p_loss(ood_scenario)
+    return get_p_error, p_loss
+
+
+@app.cell
+def _(d, itemgetter, p_loss, pd):
     columns = ['ood_scenario', 'loss', 'Multi_Spec',]
+
     def get_mss_ploss(x):
-        return *itemgetter(*columns)(x),get_p_error_amp(x)
+        return *itemgetter(*columns)(x),p_loss(x)
 
     all_results_array = [get_mss_ploss(x) for x in d]
     evals_df = pd.DataFrame(all_results_array,columns=columns+["P_Loss"])
     evals_df
-    return evals_df, get_p_error_amp
+    return (evals_df,)
 
 
 @app.cell
@@ -295,12 +309,6 @@ def _(go, ood_scenario, performance_measure, plot_data):
     # Save the figure as a PDF
     fig.write_image("./plots/npsk_ood_%s_%d.png" % (performance_measure,ood_scenario), engine="kaleido",scale=5)
     fig.show()
-    return
-
-
-@app.cell
-def _():
-    (9/8) ** 7
     return
 
 

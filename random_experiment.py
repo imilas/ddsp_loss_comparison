@@ -287,7 +287,7 @@ def _(
     real_params = {k: [] for k in variable_names}  # will record parameters while searching
     norm_params = {k: [] for k in variable_names}  # will record parameters while searching
 
-    for n in range(200):
+    for n in range(20):
         state, loss = train_step(state)
         if n % 1 == 0:
             audio, mod_vars = instrument_jit(state.params, noise, SAMPLE_RATE)
