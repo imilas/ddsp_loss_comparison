@@ -79,7 +79,6 @@ def _():
 @app.cell
 def _(d, get_p_error, isnan, lfn_names, ood_scenario, performance_measure):
     def filter_experiments(d,loss_fn_name,ood_scenario):
-        print(loss_fn_name)
         return [x for x in d if x["loss"]==loss_fn_name and x["ood_scenario"]==ood_scenario]
 
     if performance_measure == "MSS":
@@ -118,7 +117,7 @@ def _(np, ood_scenario):
             return get_p_error_amp
         elif odd_scenario in {2,3}:
             return get_p_error
-   
+
     p_loss = set_p_loss(ood_scenario)
     return get_p_error, p_loss
 

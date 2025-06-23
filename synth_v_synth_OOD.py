@@ -94,10 +94,10 @@ def _():
 
 
 @app.cell
-def _(experiment):
-    experiment["ood_scenario"] = 3
-    experiment["loss"] = "L1_Spec"
-    print(experiment)
+def _():
+    # experiment["ood_scenario"] = 3
+    # experiment["loss"] = "L1_Spec"
+    # print(experiment)
     return
 
 
