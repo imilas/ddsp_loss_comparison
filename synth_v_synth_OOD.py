@@ -49,7 +49,7 @@ def _():
     parser = argparse.ArgumentParser(description='Process a loss function name.')
     parser.add_argument('--loss_fn', type=str, help='the name of the loss function. One of:  L1_Spec , DTW_Onset, JTFS,SIMSE_Spec',default="L1_Spec")
     parser.add_argument('--learning_rate', type=float, help='learning rate',default=0.04)
-    parser.add_argument('--ood_scenario', type=int, choices=[0,1,2,3], default = 2, help="ood scenario")
+    parser.add_argument('--ood_scenario', type=int, choices=[0,1,2,3,4,5], default = 2, help="ood scenario")
     args, unknown = parser.parse_known_args()
     spec_func = setup.spec_func
     clip_spec = setup.clip_spec
@@ -66,8 +66,8 @@ def _():
         "lr": args.learning_rate
     }
 
-    experiment["ood_scenario"] = 4
-    experiment["loss"] = "JTFS"
+    # experiment["ood_scenario"] = 4
+    # experiment["loss"] = "DTW_Env"
     return (
         SAMPLE_RATE,
         args,
@@ -79,7 +79,6 @@ def _():
         jax,
         jnp,
         kernel,
-        llh,
         mo,
         naive_loss,
         np,
@@ -98,7 +97,12 @@ def _():
 
 @app.cell
 def _(SAMPLE_RATE, experiment, fj, jax, mo, pg):
-
+    # 0: am_non-overlapping freqs
+    # 1: am_sine_target_saw_imitate
+    # 2: am_saw_imitate_sine_target
+    # 3: bp_noise_target_saw_imitate
+    # 4: chirp_delayed_pitchbend
+    # 5: chirp_normal
     if experiment["ood_scenario"] == 0: 
         target_prog_code, target_var1, target_var2 = pg.generate_program_3_variation((1,15),(50,1500))
         imitator_prog_code, imitator_va1, imitator_var2 = pg.generate_program_3_variation((1, 15),(2000, 8000))
@@ -112,8 +116,8 @@ def _(SAMPLE_RATE, experiment, fj, jax, mo, pg):
         target_prog_code, target_var1, target_var2 = pg.generate_program_0_v1((100,5000),(1,400))
         imitator_prog_code, imitator_va1, imitator_var2 = pg.generate_program_0((100, 5000),(1, 400))
     if experiment["ood_scenario"] == 4:
-        target_prog_code, target_var1, target_var2 = pg.generate_program_pitch_increase((1, 7), (30, 100))
-        imitator_prog_code, imitator_va1, imitator_var2 = pg.generate_program_pitch_increase((1, 7), (30, 100))
+        target_prog_code, target_var1, target_var2 = pg.generate_program_delayed_chirplet((1, 20), (30, 100))
+        imitator_prog_code, imitator_va1, imitator_var2 = pg.generate_program_delayed_chirplet((1, 20), (30, 100))
     if experiment["ood_scenario"] == 5:
         target_prog_code, target_var1, target_var2 = pg.generate_program_chirplet((2, 7), (1, 10))
         imitator_prog_code, imitator_va1, imitator_var2 = pg.generate_program_chirplet((2, 7), (1, 10))
@@ -243,7 +247,7 @@ def _(
             losses.append(loss)
             # print(n, loss, state.params)
             print(n, end="\r")
-    return losses, real_params, sounds, state
+    return sounds, state
 
 
 @app.cell
@@ -302,26 +306,26 @@ def _(plt):
 
         plt.tight_layout()
         plt.show()
-    return (plot_params_and_loss,)
-
-
-@app.cell
-def _(fj, losses, mo, plot_params_and_loss, real_params, sounds, target_sound):
-    mo.output.clear()
-    fj.show_audio(target_sound)
-    fj.show_audio(sounds[-1])
-    # Example call:
-    plot_params_and_loss(real_params, losses)
     return
 
 
 @app.cell
-def _(grad_fn, imitator_instrument_params, llh, target_instrument_params):
+def _():
+    # mo.output.clear()
+    # fj.show_audio(target_sound)
+    # fj.show_audio(sounds[-1])
+    # # Example call:
+    # plot_params_and_loss(real_params, losses)
+    return
 
-    grids,grid_losses,grad_losses = llh.loss_grad_grids(imitator_instrument_params,[8,8],grad_fn)
-    llh.loss_3d_plot(grids,grid_losses,grad_losses,list(imitator_instrument_params["params"].keys()))
-    myplot = llh.loss_2d_plot(grids,grid_losses,grad_losses,list(imitator_instrument_params["params"].keys()),list(target_instrument_params["params"].values()))
-    myplot.plot(*list(target_instrument_params["params"].values()), 'ro', markersize=6, label='Target Params')
+
+@app.cell
+def _():
+
+    # grids,grid_losses,grad_losses = llh.loss_grad_grids(imitator_instrument_params,[7,7],grad_fn)
+    # llh.loss_3d_plot(grids,grid_losses,grad_losses,list(imitator_instrument_params["params"].keys()))
+    # myplot = llh.loss_2d_plot(grids,grid_losses,grad_losses,list(imitator_instrument_params["params"].keys()),list(target_instrument_params["params"].values()))
+    # myplot.plot(*list(target_instrument_params["params"].values()), 'ro', markersize=6, label='Target Params')
     return
 
 

@@ -68,9 +68,15 @@ def _(os, pickle):
 
 
 @app.cell
+def _(d):
+    len(d)
+    return
+
+
+@app.cell
 def _():
     lfn_names = ['DTW_Onset','L1_Spec' ,'SIMSE_Spec', 'JTFS']
-    ood_scenario = 4
+    ood_scenario = 5
     performance_measure = "P_Loss"
     # performance_measure = "MSS"
     return lfn_names, ood_scenario, performance_measure
@@ -115,7 +121,7 @@ def _(np, ood_scenario):
     def set_p_loss(odd_scenario):
         if odd_scenario in {0,1,2}:
             return get_p_error_amp
-        elif odd_scenario in {2,3}:
+        elif odd_scenario in {2,3,4,5}:
             return get_p_error
 
     p_loss = set_p_loss(ood_scenario)
@@ -308,17 +314,6 @@ def _(go, ood_scenario, performance_measure, plot_data):
     # Save the figure as a PDF
     fig.write_image("./plots/npsk_ood_%s_%d.png" % (performance_measure,ood_scenario), engine="kaleido",scale=5)
     fig.show()
-    return
-
-
-@app.cell
-def _(np, plt):
-    x = np.linspace(-1,1,100)
-    y = lambda x: x**2
-
-    plt.plot(x,y(x),label="original")
-    plt.plot(x,y(x/1.5 - 0.1),label="modified")
-    plt.legend()
     return
 
 

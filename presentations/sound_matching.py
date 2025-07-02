@@ -1,7 +1,10 @@
 import marimo
 
 __generated_with = "0.13.6"
-app = marimo.App(width="full")
+app = marimo.App(
+    width="full",
+    layout_file="layouts/sound_matching.slides.json",
+)
 
 
 @app.cell

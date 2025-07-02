@@ -316,13 +316,15 @@ def generate_program_chirplet(increase_rate_range, pulse_rate_range, mult_range=
     return formatted_code, INCREASE_DEFAULT, PULSE_DEFAULT
 
 
-def generate_program_pitch_increase(increase_range, pitch_range, increase_default=None, pitch_default=None):
+def generate_program_delayed_chirplet(increase_range, pitch_range, delay_range=(5000, 30000), increase_default=None, pitch_default=None, delay_value=None):
     increase_min, increase_max = increase_range
     pitch_min, pitch_max = pitch_range
+    delay_min, delay_max = delay_range
 
     # Random defaults if not provided
     INCREASE_DEFAULT = increase_default if increase_default is not None else round(random.uniform(increase_min, increase_max), 2)
     PITCH_DEFAULT = pitch_default if pitch_default is not None else round(random.uniform(pitch_min, pitch_max), 2)
+    RAND_START = delay_value if delay_value is not None else random.randint(delay_min, delay_max)
 
     program_code = (
         'import("stdfaust.lib");\n'
@@ -331,7 +333,7 @@ def generate_program_pitch_increase(increase_range, pitch_range, increase_defaul
         'sineOsc(f) = +(f/ma.SR) ~ ma.frac : *(3*ma.PI) : sin;\n'
         'sawOsc(f) = +(f/ma.SR) ~ ma.frac : +(0.5);\n'
         'increasing_pitch(rate) = _ ~ +(rate/ma.SR) : exp;\n\n'
-        'process = sineOsc(increasing_pitch(increase_speed) + starting_pitch);'
+        'process = sineOsc(increasing_pitch(increase_speed) : de.delay({RAND_START}, 48000) + starting_pitch);'
     )
 
     formatted_code = program_code.format(
@@ -340,7 +342,8 @@ def generate_program_pitch_increase(increase_range, pitch_range, increase_defaul
         INCREASE_MAX=increase_max,
         PITCH_DEFAULT=PITCH_DEFAULT,
         PITCH_MIN=pitch_min,
-        PITCH_MAX=pitch_max
+        PITCH_MAX=pitch_max,
+        RAND_START=RAND_START
     )
 
     return formatted_code, INCREASE_DEFAULT, PITCH_DEFAULT

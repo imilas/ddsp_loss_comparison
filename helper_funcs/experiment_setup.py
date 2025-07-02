@@ -28,7 +28,7 @@ dtw_jax = softdtw_jax.SoftDTW(gamma=1)
 kernel = jnp.array(loss_helpers.gaussian_kernel1d(3, 0, 10))
 
 # Scattering
-J = 12
+J = 10
 Q = 2
 scat_jax = Scattering1D(J, SAMPLE_RATE, Q)
 
