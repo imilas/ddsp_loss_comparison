@@ -25,7 +25,13 @@ def _():
     import plotly.graph_objects as go
     from rpy2.robjects.packages import importr
     from rpy2.robjects import pandas2ri
+
+
+    already_read_set = set()
+    d = []
     return (
+        already_read_set,
+        d,
         go,
         importr,
         isnan,
@@ -42,41 +48,37 @@ def _():
 
 
 @app.cell
-def _(os, pickle):
+def _(already_read_set, d, os, pickle):
 
     # Directory containing pickle files
     directory = "./results/out_domain"
-
-    # List to store loaded dictionaries
-    d = []
 
     # Iterate over all files in the directory
     for filename in os.listdir(directory):
         if filename.endswith(".pkl"):
             file_path = os.path.join(directory, filename)
 
-            # Load each pickle file and append the data to the list
+            # Skip if already in the set
+            if file_path in already_read_set:
+                continue
+            # Load and clean dictionary
             with open(file_path, "rb") as file:
-                exp_dictionary= pickle.load(file)
-                # Remove sounds
+                exp_dictionary = pickle.load(file)
                 exp_dictionary.pop("target_sound", None)
                 exp_dictionary.pop("output_sound", None)
                 d.append(exp_dictionary)
 
+            # Track the file as read
+            already_read_set.add(file_path)
 
-    return (d,)
-
-
-@app.cell
-def _(d):
-    len(d)
+    print(len(already_read_set),len(d))
     return
 
 
 @app.cell
 def _():
     lfn_names = ['DTW_Onset','L1_Spec' ,'SIMSE_Spec', 'JTFS']
-    ood_scenario = 5
+    ood_scenario = 6
     performance_measure = "P_Loss"
     # performance_measure = "MSS"
     return lfn_names, ood_scenario, performance_measure
@@ -121,7 +123,7 @@ def _(np, ood_scenario):
     def set_p_loss(odd_scenario):
         if odd_scenario in {0,1,2}:
             return get_p_error_amp
-        elif odd_scenario in {2,3,4,5}:
+        elif odd_scenario in {2,3,4,5,6}:
             return get_p_error
 
     p_loss = set_p_loss(ood_scenario)
