@@ -3,10 +3,10 @@
 # Defaults
 OOD_SCENARIO=${1:-0}
 PARALLEL_JOBS=${2:-3}
+COUNT=${3:-60}
 
-LOSS_FUNCS=("L1_Spec" "SIMSE_Spec" "DTW_Onset" "JTFS")
-# LOSS_FUNCS=("JTFS")
-COUNT=80
+#LOSS_FUNCS=("L1_Spec" "SIMSE_Spec" "DTW_Onset" "JTFS")
+LOSS_FUNCS=("JTFS")
 
 generate_commands() {
   for loss in "${LOSS_FUNCS[@]}"; do

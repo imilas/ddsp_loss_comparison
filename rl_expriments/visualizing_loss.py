@@ -189,26 +189,33 @@ def _(
 
 @app.cell
 def _(DSP_params, g, lpg, np, param_linspace, plt):
-    fig, ax1 = plt.subplots()
 
-    # Plot on the first y-axis
-    ax1.plot(param_linspace, [p[0][0] for p in lpg], label='Loss', color='blue')
+
+    FIGSIZE = (5, 3)  # Inches
+    DPI = 300
+    SAVE_KWARGS = dict(dpi=DPI, bbox_inches='tight', pad_inches=0, facecolor='white')
+
+    fig, ax1 = plt.subplots(figsize=FIGSIZE, constrained_layout=True)
+
+    # Main plot
+    ax1.plot(param_linspace, [p[0][0] for p in lpg], color='blue')
     ax1.set_ylabel("Loss", color='blue')
 
-    # Create second y-axis
+    # Second y-axis
     ax2 = ax1.twinx()
-    eps = 1e-3  # or any small value
-    result = [-1 if x < -eps else 1 if x > eps else 0 for x in g]
-    window_size = 40
-    window = np.ones(window_size) / window_size
-    result = np.convolve(g, window, mode='same')
-    # ax2.plot(param_linspace, g, label='Normalized g', color='green')
-    ax2.plot(param_linspace, result, color='green' )
+    smoothed_grad = np.convolve(g, np.ones(40)/40, mode='same')
+    ax2.plot(param_linspace, smoothed_grad, color='green')
+    ax2.set_ylabel("Gradients", color='green')
 
-    ax2.set_ylabel("smoothed gradients", color='green')
-    ax1.axvline(x=list(DSP_params["params"].values())[0], color='red', linestyle='--', linewidth=2)
+    # Red vertical line
+    correct_param = list(DSP_params["params"].values())[0]
+    ax1.axvline(x=correct_param, color='red', linestyle='--', linewidth=2, label="Correct Param")
 
-    plt.show()
+    fig.suptitle("DTW Landscape Example")
+    fig.legend(bbox_to_anchor=(0.75, 0.9))
+
+    fig.savefig("./plots/DTW_loss_landscape.png", **SAVE_KWARGS)
+
     return
 
 

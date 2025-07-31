@@ -71,7 +71,7 @@ def _(already_read_set, d, os, pickle):
             # Track the file as read
             already_read_set.add(file_path)
 
-    print(len(already_read_set),len(d))
+    print(len(d))
     return
 
 

@@ -8,6 +8,10 @@ app = marimo.App(width="medium")
 def _():
     import sys
     from pathlib import Path
+    _parentdir = Path(__file__).parent.parent.resolve()
+    sys.path.insert(0, str(_parentdir))
+
+
     import argparse
     import copy
 
@@ -30,9 +34,6 @@ def _():
     import matplotlib.pyplot as plt
     import numpy as np
 
-    # Add parent directory to path for imports
-    _parentdir = Path(__file__).parent.parent.resolve()
-    sys.path.insert(0, str(_parentdir))
 
     # --- Config ---
     SAMPLE_RATE = 44100
@@ -250,7 +251,7 @@ def _():
     #     params["params"][target_param] = param_val[0]
     #     l,_ = loss_fn(params)
     #     return -l
-    
+
     # # Sample from policy
     # def sample_params(key, mean, std):
     #     return mean + std * jax.random.normal(key, shape=mean.shape)
@@ -318,7 +319,7 @@ def _(DSP_params, jax, jnp, loss_fn, target_param):
         params["params"][target_param] = param_val[0]
         l,_ = loss_fn(params)
         return -l
-    
+
     def sample_params(key, mean, std):
         return mean + std * jax.random.normal(key, shape=mean.shape)
 
@@ -357,7 +358,8 @@ def _(DSP_params, jax, jnp, loss_fn, target_param):
 @app.cell
 def _(param_vals_smooth, plt, rewards_smooth, true_value):
     # Plotting
-    plt.figure(figsize=(12, 4))
+    plt.style.use("default")  # Light background, dark text/lines
+    plt.figure(figsize=(12, 4),facecolor='white')
 
     plt.subplot(1, 2, 1)
     plt.plot(rewards_smooth, label="Smoothed Reward")
@@ -376,6 +378,8 @@ def _(param_vals_smooth, plt, rewards_smooth, true_value):
     plt.grid(True)
 
     plt.tight_layout()
+    plt.savefig("./plots/Rainbow_navigation.png", bbox_inches='tight', pad_inches=0, )
+
     plt.show()
     return
 

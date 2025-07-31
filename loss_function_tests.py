@@ -23,10 +23,10 @@ def _():
     import librosa
     import matplotlib.pyplot as plt
 
-    from helpers import faust_to_jax as fj
+    from helper_funcs import faust_to_jax as fj
     from audax.core import functional
     import copy
-    from helpers import ts_comparisions as ts_comparisons
+    from helper_funcs import ts_comparisions as ts_comparisons
     import dtw
 
     default_device = "cpu"  # or 'gpu'
@@ -73,7 +73,7 @@ def _(SAMPLE_RATE, fj, jax):
 
 
 @app.cell
-def _(SAMPLE_RATE, faust_code_3, fj, jax, length_seconds, partial):
+def _(SAMPLE_RATE, faust_code_3, fj, jax, key, length_seconds, partial):
     DSP = fj.faust2jax(faust_code_3)
     DSP = DSP(SAMPLE_RATE)
     DSP_jit = jax.jit(partial(DSP.apply,mutable="intermediates"), static_argnums=[2])
@@ -83,8 +83,8 @@ def _(SAMPLE_RATE, faust_code_3, fj, jax, length_seconds, partial):
         minval=-1,
         maxval=1,
     )
-    # DSP_params = DSP.init(key, noise, SAMPLE_RATE)
-    return DSP_jit, noise
+    DSP_params = DSP.init(key, noise, SAMPLE_RATE)
+    return DSP_jit, DSP_params, noise
 
 
 @app.cell
@@ -272,8 +272,8 @@ def _(SAMPLE_RATE, mo, np, plt, target):
     mo.output.clear()
     from kymatio.jax import Scattering1D
 
-    J = 4 # higher creates smoother loss but more costly
-    Q = 1
+    J = 8 # higher creates smoother loss but more costly
+    Q = 2
 
     scat_jax = Scattering1D(J, SAMPLE_RATE, Q)
     # scat_jit = jax.jit(scat_jax)
@@ -308,16 +308,27 @@ def _(
     target_param,
     target_scatter,
 ):
+    FIGSIZE = (5, 3)  # Inches
+    DPI = 300
+    SAVE_KWARGS = dict(dpi=DPI, bbox_inches='tight', pad_inches=0, facecolor='white')
+
+
+    fig, ax = plt.subplots(figsize=FIGSIZE, constrained_layout=True)
+
     losses_scatter = [naive_loss(x, target_scatter) for x in outputs_scatter]
-    plt.plot(param_linspace, losses_scatter)
-    plt.axvline(
-        DSP_params["params"][target_param],
-        color="#FF000055",
-        linestyle="dashed",
-        label="correct param",
-    )
-    plt.legend()
-    plt.title("wavelet scatter loss")
+    ax.plot(param_linspace, losses_scatter)
+    ax.axvline(DSP_params["params"][target_param], color='red', linestyle='--', linewidth=2, label="Correct Param")
+
+    ax.set_title("JTFS Landscape Example")
+    ax.legend(loc='lower right')
+
+    fig.savefig("./plots/JTFS_loss_landscape.png", **SAVE_KWARGS)
+
+    return
+
+
+@app.cell
+def _():
     return
 
 
