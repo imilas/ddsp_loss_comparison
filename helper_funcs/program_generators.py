@@ -281,8 +281,37 @@ def generate_2_1d(carrier_range, carrier=None):
 
     return formatted_code, CARRIER
 
+def generate_program_chirp_nodelay(increase_range, pitch_range, increase_default=None, pitch_default=None):
+    increase_min, increase_max = increase_range
+    pitch_min, pitch_max = pitch_range
+
+    # Random defaults if not provided
+    INCREASE_DEFAULT = increase_default if increase_default is not None else round(random.uniform(increase_min, increase_max), 2)
+    PITCH_DEFAULT = pitch_default if pitch_default is not None else round(random.uniform(pitch_min, pitch_max), 2)
+
+    program_code = (
+        'import("stdfaust.lib");\n'
+        'increase_speed = hslider("increase_speed", {INCREASE_DEFAULT}, {INCREASE_MIN}, {INCREASE_MAX}, 0.1);\n'
+        'starting_pitch = hslider("starting_pitch", {PITCH_DEFAULT}, {PITCH_MIN}, {PITCH_MAX}, 0.1);\n\n'
+        'sineOsc(f) = +(f/ma.SR) ~ ma.frac : *(3*ma.PI) : sin;\n'
+        'sawOsc(f) = +(f/ma.SR) ~ ma.frac : +(0.5);\n'
+        'increasing_pitch(rate) = _ ~ +(rate/ma.SR) : exp;\n\n'
+        'process = sineOsc(increasing_pitch(increase_speed) + starting_pitch);'
+    )
+
+    formatted_code = program_code.format(
+        INCREASE_DEFAULT=INCREASE_DEFAULT,
+        INCREASE_MIN=increase_min,
+        INCREASE_MAX=increase_max,
+        PITCH_DEFAULT=PITCH_DEFAULT,
+        PITCH_MIN=pitch_min,
+        PITCH_MAX=pitch_max
+    )
+
+    return formatted_code, INCREASE_DEFAULT, PITCH_DEFAULT
+
 # out-of-domain
-def generate_program_chirplet(increase_rate_range, pulse_rate_range, mult_range=(50, 1000), increase_default=None, pulse_default=None, mult_value=None):
+def generate_program_chirplet_pulse(increase_rate_range, pulse_rate_range, mult_range=(50, 1000), increase_default=None, pulse_default=None, mult_value=None):
     # out of domain 
     increase_min, increase_max = increase_rate_range
     pulse_min, pulse_max = pulse_rate_range
@@ -329,10 +358,10 @@ def generate_program_delayed_chirplet(increase_range, pitch_range, delay_range=(
     program_code = (
         'import("stdfaust.lib");\n'
         'increase_speed = hslider("increase_speed", {INCREASE_DEFAULT}, {INCREASE_MIN}, {INCREASE_MAX}, 0.1);\n'
-        'starting_pitch = hslider("starting_pitch", {PITCH_DEFAULT}, {PITCH_MIN}, {PITCH_MAX}, 0.1);\n'
+        'starting_pitch = hslider("starting_pitch", {PITCH_DEFAULT}, {PITCH_MIN}, {PITCH_MAX}, 0.1);\n\n'
         'sineOsc(f) = +(f/ma.SR) ~ ma.frac : *(3*ma.PI) : sin;\n'
         'sawOsc(f) = +(f/ma.SR) ~ ma.frac : +(0.5);\n'
-        'increasing_pitch(rate) = _ ~ +(rate/ma.SR) : exp;\n'
+        'increasing_pitch(rate) = _ ~ +(rate/ma.SR) : exp;\n\n'
         'process = sineOsc(increasing_pitch(increase_speed) : de.delay({RAND_START}, 48000) + starting_pitch);'
     )
 
