@@ -43,7 +43,7 @@ Install [**Marimo**](https://github.com/marimo-team/marimo) to view and run the 
 
 ## Key Code Components
 
-- **`./helpers/`**  
+- **`./helper_funcs/`**  
   Contains:
   - Loss function definitions
   - Plotting utilities
