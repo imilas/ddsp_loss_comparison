@@ -49,7 +49,7 @@ def _():
     parser = argparse.ArgumentParser(description='Process a loss function name.')
     parser.add_argument('--loss_fn', type=str, help='the name of the loss function. One of:  L1_Spec , DTW_Onset, JTFS,SIMSE_Spec',default="L1_Spec")
     parser.add_argument('--learning_rate', type=float, help='learning rate',default=0.04)
-    parser.add_argument('--ood_scenario', type=int, choices=[0,1,2,3,4,5,6], default = 2, help="ood scenario")
+    parser.add_argument('--ood_scenario', type=int, choices=[0,1,2,3,4,5,6], default = 5, help="ood scenario")
     args, unknown = parser.parse_known_args()
     spec_func = setup.spec_func
     clip_spec = setup.clip_spec

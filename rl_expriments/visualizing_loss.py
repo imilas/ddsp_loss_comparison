@@ -24,6 +24,7 @@ def _():
     from functools import partial
     import jax
     import jax.numpy as jnp
+    import dm_pix
     from jax import random as jrandom
 
     import marimo as mo
@@ -44,6 +45,7 @@ def _():
         SAMPLE_RATE,
         argparse,
         copy,
+        dm_pix,
         fj,
         jax,
         jnp,
@@ -51,7 +53,6 @@ def _():
         mo,
         np,
         partial,
-        pg,
         plt,
         setup,
     )
@@ -82,15 +83,17 @@ def _(argparse, setup):
     )
 
 
-@app.cell
-def _(SAMPLE_RATE, fj, jax, pg):
+app._unparsable_cell(
+    r"""
     fj.SAMPLE_RATE = SAMPLE_RATE
     key = jax.random.PRNGKey(10)
 
-    # faust_code,_ = pg.generate_1_1d([100,20000])
-    faust_code, _ = pg.generate_2_1d([0.1,20])
+    faust_code,_ = pg.generate_0_1d([100,20000],lp_cut=15000)
+    faust_code, _ = pg.generate_2_1d([0.1,20])-
     print(faust_code)
-    return faust_code, key
+    """,
+    name="_"
+)
 
 
 @app.cell
@@ -131,13 +134,13 @@ def _(DSP_params, SAMPLE_RATE, copy, fj, instrument_jit, jnp, noise):
 
 
     target_param = list(DSP_params["params"].keys())[0]
-    param_linspace = jnp.array(jnp.linspace(-0.99, 1.0, 300, endpoint=False))
+    param_linspace = jnp.array(jnp.linspace(-0.99, 1.0, 100, endpoint=False))
     programs = [
         fill_template(copy.deepcopy(DSP_params), [target_param], [x])
         for x in param_linspace
     ]
 
-    s,_ = instrument_jit(programs[100], noise, SAMPLE_RATE)
+    s,_ = instrument_jit(programs[25], noise, SAMPLE_RATE)
     fj.show_audio(s)
     return param_linspace, programs
 
@@ -154,73 +157,112 @@ def _(
     loss_multi_spec,
     naive_loss,
     noise,
+    np,
     onset_1d,
+    plt,
     programs,
     scat_jax,
     spec_func,
     target_sound,
 ):
-    lfn = 'DTW_Onset'
-    def loss_fn(params):
-        pred = instrument_jit(params, noise, SAMPLE_RATE)[0]
-        # loss = (jnp.abs(pred - target_sound)).mean()
-        # loss = 1/dm_pix.ssim(clip_spec(spec_func(target_sound)),clip_spec(spec_func(pred)))
-        if lfn  == 'L1_Spec':
-            loss = naive_loss(spec_func(pred)[0], spec_func(target_sound))
-        elif lfn  == 'SIMSE_Spec':
-            loss = dm_pix.simse(clip_spec(spec_func(target_sound)), clip_spec(spec_func(pred)))
-        elif lfn  == 'DTW_Onset':
-            loss = dtw_jax(onset_1d(target_sound, kernel, spec_func), onset_1d(pred, kernel, spec_func))
-        elif lfn  == 'JTFS':
-            loss = naive_loss(scat_jax(target_sound), scat_jax(pred)[0])
-        elif lfn == 'Multi_Spec':
-            loss = loss_multi_spec(target_sound,pred)
-        else:
-            raise ValueError("Invalid value for loss")  
-        return loss, pred
+    # --- LOSS LANDSCAPES FOR MULTIPLE LOSSES (normalize to 0–1) ---
+    # Force white theme
+    plt.style.use("default")
+    loss_names = ['L1_Spec',"SIMSE_Spec","DTW_Onset","JTFS"]  # adjust as needed
 
+    def make_grad_fn(loss_name):
+        # Localized wrapper to avoid changing your existing loss_fn/grad_fn globals
+        def _loss_fn(params):
+            pred = instrument_jit(params, noise, SAMPLE_RATE)[0]
+            if loss_name == 'L1_Spec':
+                loss = naive_loss(spec_func(pred)[0], spec_func(target_sound))
+            elif loss_name == 'SIMSE_Spec':
+                loss = dm_pix.simse(clip_spec(spec_func(target_sound)), clip_spec(spec_func(pred)))
+            elif loss_name == 'DTW_Onset':
+                loss = dtw_jax(onset_1d(target_sound, kernel, spec_func), onset_1d(pred, kernel, spec_func))
+            elif loss_name == 'JTFS':
+                loss = naive_loss(scat_jax(target_sound), scat_jax(pred)[0])
+            elif loss_name == 'Multi_Spec':
+                loss = loss_multi_spec(target_sound, pred)
+            else:
+                raise ValueError(f"Invalid loss_name: {loss_name}")
+            return loss, pred
+        return jax.jit(jax.value_and_grad(_loss_fn, has_aux=True))
 
-    grad_fn = jax.jit(jax.value_and_grad(loss_fn, has_aux=True))
-    (loss, pred), grads = grad_fn(programs[0])
-    lpg = [grad_fn(p) for p in programs] # (loss,preduct), params for each program
-    g = [list(p[1]["params"].values())[0] for p in lpg] # get grads for each program
-    return g, lpg
+    # Compute loss/grad sweeps for each loss function across your existing `programs`
+    loss_curves_norm = {}  # name -> np.array normalized to [0, 1]
+    grad_curves_norm = {}  # name -> np.array normalized to [-1, 1]
+
+    for name in loss_names:
+        gf_local = make_grad_fn(name)
+        sweep_outputs = [gf_local(p) for p in programs]  # [( (loss, pred), grads ), ...]
+        # Extract raw losses (as scalar) and raw grads for the first parameter
+        loss_values_raw = np.array([float(out[0][0]) for out in sweep_outputs])
+        grad_values_raw = np.array([float(list(out[1]["params"].values())[0]) for out in sweep_outputs])
+
+        # Normalize losses to [0, 1] per-curve
+        l_min = np.min(loss_values_raw)
+        l_max = np.max(loss_values_raw)
+        loss_norm = (loss_values_raw - l_min) / (l_max - l_min + 1e-12)
+
+        # Optionally smooth gradients (comment out if not desired)
+        # grad_values_raw = np.convolve(grad_values_raw, np.ones(40)/40, mode='same')
+
+        # Normalize gradients to [-1, 1] per-curve
+        g_abs_max = np.max(np.abs(grad_values_raw)) + 1e-12
+        grad_norm = grad_values_raw / g_abs_max
+
+        loss_curves_norm[name] = loss_norm
+        grad_curves_norm[name] = grad_norm
+
+    FIGSIZE = (6, 4)
+    DPI = 300
+
+    return FIGSIZE, grad_curves_norm, loss_curves_norm, loss_names
 
 
 @app.cell
-def _(DSP_params, g, lpg, np, param_linspace, plt):
+def _(DSP_params, FIGSIZE, loss_curves_norm, loss_names, param_linspace, plt):
+    fig, ax1 = plt.subplots(figsize=FIGSIZE, constrained_layout=True, )
 
-
-    FIGSIZE = (5, 3)  # Inches
-    DPI = 300
-    SAVE_KWARGS = dict(dpi=DPI, bbox_inches='tight', pad_inches=0, facecolor='white')
-
-    fig, ax1 = plt.subplots(figsize=FIGSIZE, constrained_layout=True)
-
-    # Main plot
-    ax1.plot(param_linspace, [p[0][0] for p in lpg], color='blue')
-    ax1.set_ylabel("Loss", color='blue')
-
-    # Second y-axis
-    ax2 = ax1.twinx()
-    smoothed_grad = np.convolve(g, np.ones(40)/40, mode='same')
-    ax2.plot(param_linspace, smoothed_grad, color='green')
-    ax2.set_ylabel("Gradients", color='green')
-
-    # Red vertical line
+    # # Red vertical line
     correct_param = list(DSP_params["params"].values())[0]
     ax1.axvline(x=correct_param, color='red', linestyle='--', linewidth=2, label="Correct Param")
-
-    fig.suptitle("DTW Landscape Example")
-    fig.legend(bbox_to_anchor=(0.75, 0.9))
-
-    fig.savefig("./plots/DTW_loss_landscape.png", **SAVE_KWARGS)
-
-    return
+    # Plot normalized loss landscapes (0–1) on a single axis
+    fig_loss, ax_loss = plt.subplots(figsize=FIGSIZE, constrained_layout=True)
+    for name0 in loss_names:
+        ax_loss.plot(param_linspace, loss_curves_norm[name0], label=name0)
+    ax_loss.set_xlabel("Parameter")
+    ax_loss.set_ylabel("Normalized Loss (0–1)")
+    ax_loss.axvline(x=correct_param, color='red', linestyle='--', linewidth=2, label="Correct Param")
+    # ax_loss.set_title("Normalized Loss Landscapes")
+    ax_loss.legend(bbox_to_anchor=(0., 0.345),loc="upper left")
+    fig_loss.savefig(f"./plots/comparing_lanscapes_1_1d_normalized.png")
+    return (correct_param,)
 
 
 @app.cell
-def _():
+def _(
+    FIGSIZE,
+    correct_param,
+    grad_curves_norm,
+    loss_names,
+    param_linspace,
+    plt,
+):
+    # --- GRADIENT PLOTS (normalize to −1..1) ---
+
+    fig_grad, ax_grad = plt.subplots(figsize=FIGSIZE, constrained_layout=True)
+    for name1 in loss_names:
+        ax_grad.plot(param_linspace, grad_curves_norm[name1], label=name1)
+    ax_grad.set_xlabel("Parameter")
+    ax_grad.set_ylabel("Normalized Gradient (−1 to 1)")
+    ax_grad.axhline(0.0, color='k', linewidth=0.8, alpha=0.6)
+    ax_grad.axvline(x=correct_param, color='red', linestyle='--', linewidth=2, label="Correct Param")
+    # ax_grad.set_title("Normalized Gradients")
+    ax_grad.legend(bbox_to_anchor=(0., 0.365),loc="upper left")
+    fig_grad
+    # fig_grad.savefig("./plots/loss_gradients_normalized.png", **SAVE_KWARGS)
     return
 
 

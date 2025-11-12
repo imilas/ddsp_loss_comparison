@@ -172,30 +172,6 @@ def generate_program_3_variation(amp_range, carrier_range, amp=None, carrier=Non
 
     return formatted_code, AMP, CARRIER
 
-
-# program 0_1D, with optional arguments for lp_cut and hp_cut
-def generate_program_0_1D(lp_cut_range, lp_cut=None, hp_cut=None):
-    lp_cut_min, lp_cut_max = lp_cut_range
-    
-    # Use provided values or generate randomly
-    LP_CUT = lp_cut if lp_cut is not None else random.randint(lp_cut_min, lp_cut_max)
-    HP_CUT = hp_cut if hp_cut is not None else 1000
-
-    program_code = (
-        'import("stdfaust.lib");\n'
-        'lp_cut = hslider("lp_cut", {LP_CUT}, {LP_CUT_MIN}, {LP_CUT_MAX}, 1);\n'
-        'process = no.noise:fi.lowpass(3, lp_cut):fi.highpass(10, hp_cut);'
-    )
-
-    formatted_code = program_code.format(
-        LP_CUT=LP_CUT,
-        LP_CUT_MIN=lp_cut_min,
-        LP_CUT_MAX=lp_cut_max,
-        HP_CUT=HP_CUT,
-    )
-
-    return formatted_code, LP_CUT, HP_CUT
-
 # Program selection function
 def choose_program(program_id, var1_range, var2_range=None, var1=None, var2=None):
     if program_id == 0:
@@ -206,8 +182,6 @@ def choose_program(program_id, var1_range, var2_range=None, var1=None, var2=None
         return generate_program_2(var1_range, var2_range, var1, var2)
     elif program_id == 3:
         return generate_program_3(var1_range, var2_range, var1, var2)
-    elif program_id == 0.1:
-        return generate_program_0_1D(var1_range,var1,var2)
     else:
         raise ValueError("Invalid program ID")
 
@@ -240,7 +214,7 @@ def generate_parameters(program_id):
 
 # 1 Dimensional program
 # Function to generate program code for program 0, with optional argument for lp_cut only
-def generate_1_1d(lp_cut_range, lp_cut=None):
+def generate_0_1d(lp_cut_range, lp_cut=None):
     lp_cut_min, lp_cut_max = lp_cut_range
 
     # Use provided value or generate randomly
