@@ -9,8 +9,9 @@ from scipy.io.wavfile import write
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument("data_folder", type=str,nargs="?",default="hearing_test/in_domain", help="Path to folder containing .pkl files")
+parser.add_argument("--data_folder", type=str,nargs="?",default="hearing_test/in_domain", help="Path to folder containing .pkl files")
 args = parser.parse_args()
+
 
 DATA_FOLDER = args.data_folder
 
@@ -33,7 +34,7 @@ ratings = st.session_state.ratings  # Alias for easier use
 all_pkl_files = sorted([f for f in os.listdir(DATA_FOLDER) if f.endswith(".pkl")])
 
 # Extract program numbers from filenames (assuming format: *_<program_num>_*.pkl)
-program_numbers = sorted(set(float(f.split("_")[-2]) for f in all_pkl_files))
+program_numbers = sorted(set(f.split("_")[-2] for f in all_pkl_files))
 
 # Dropdown to select program number
 selected_program = st.selectbox("Select Program Number:", program_numbers)

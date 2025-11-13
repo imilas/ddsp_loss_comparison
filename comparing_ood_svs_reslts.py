@@ -35,15 +35,11 @@ def _():
         go,
         importr,
         isnan,
-        itemgetter,
-        kruskal,
         np,
         os,
         pandas2ri,
         pd,
         pickle,
-        plt,
-        sns,
     )
 
 
@@ -51,7 +47,7 @@ def _():
 def _(already_read_set, d, os, pickle):
 
     # Directory containing pickle files
-    directory = "./results/out_domain"
+    directory = "./results/out_of_domain"
 
     # Iterate over all files in the directory
     for filename in os.listdir(directory):
@@ -78,9 +74,9 @@ def _(already_read_set, d, os, pickle):
 @app.cell
 def _():
     lfn_names = ['DTW_Onset','L1_Spec' ,'SIMSE_Spec', 'JTFS']
-    ood_scenario = 3
+    ood_scenario = 0
     performance_measure = "P_Loss"
-    # performance_measure = "MSS"
+
     return lfn_names, ood_scenario, performance_measure
 
 
@@ -127,47 +123,7 @@ def _(np, ood_scenario):
             return get_p_error
 
     p_loss = set_p_loss(ood_scenario)
-    return get_p_error, p_loss
-
-
-@app.cell
-def _(d, itemgetter, p_loss, pd):
-    columns = ['ood_scenario', 'loss', 'Multi_Spec',]
-
-    def get_mss_ploss(x):
-        return *itemgetter(*columns)(x),p_loss(x)
-
-    all_results_array = [get_mss_ploss(x) for x in d]
-    evals_df = pd.DataFrame(all_results_array,columns=columns+["P_Loss"])
-    evals_df
-    return (evals_df,)
-
-
-@app.cell
-def _(evals_df, kruskal):
-    def kruskal_by_loss_group(df, value_column):
-        """
-        Perform Kruskal-Wallis test on `value_column` for each group in the 'loss' column.
-
-        Parameters:
-            df (pd.DataFrame): The input DataFrame with at least 'loss' and `value_column`.
-            value_column (str): The name of the column on which to apply the test.
-
-        Returns:
-            H-statistic, p-value
-        """
-        grouped_values = [
-            group[value_column].values
-            for _, group in df.groupby("loss")
-        ]
-
-        stat, p_value = kruskal(*grouped_values)
-        return stat, p_value
-
-    for pid in evals_df["ood_scenario"].unique():
-        for eval_method in ["Multi_Spec"]:
-            print("program %d evaluation method %s"%(pid,eval_method),kruskal_by_loss_group(evals_df[evals_df["ood_scenario"]==pid],eval_method))
-    return
+    return (get_p_error,)
 
 
 @app.cell
@@ -203,7 +159,7 @@ def _(g, lfn_names, np, pd):
 
 
 @app.cell
-def _(boot_df, importr, np, pandas2ri, pd, plt, sns):
+def _(boot_df, importr, np, pandas2ri, pd):
 
     # Activate automatic conversion between pandas and R
     pandas2ri.activate()
@@ -233,18 +189,18 @@ def _(boot_df, importr, np, pandas2ri, pd, plt, sns):
     plot_data = plot_data.sort_values(["Model"])
 
 
-    fp = sns.FacetGrid(plot_data,col="Rank",sharey=True,sharex=False,height=4,aspect=0.5,)
-    fp.map_dataframe(
-        sns.boxplot,
-        x="Model",
-        y="Inverse Loss",
-    )
+    # fp = sns.FacetGrid(plot_data,col="Rank",sharey=True,sharex=False,height=4,aspect=0.5,)
+    # fp.map_dataframe(
+    #     sns.boxplot,
+    #     x="Model",
+    #     y="Inverse Loss",
+    # )
 
-    fp.set(xlabel=None,)
+    # fp.set(xlabel=None,)
 
-    plt.tight_layout()
-    # plt.savefig("./plots/npsk_%s_%d.png" % (performance_measure,program_num), bbox_inches='tight', pad_inches=0, transparent=True)
-    plt.show()
+    # plt.tight_layout()
+    # # plt.savefig("./plots/npsk_%s_%d.png" % (performance_measure,program_num), bbox_inches='tight', pad_inches=0, transparent=True)
+    # plt.show()
     return (plot_data,)
 
 

@@ -102,7 +102,8 @@ def _(SAMPLE_RATE, experiment, fj, jax, mo, pg):
     # 2: am_saw_imitate_sine_target
     # 3: bp_noise_target_saw_imitate
     # 4: chirp_delayed_pitchbend
-    # 5: chirp_normal
+    # 5: chirp pulsating
+    # 6: chirp normal
     if experiment["ood_scenario"] == 0: 
         target_prog_code, target_var1, target_var2 = pg.generate_program_3_variation((1,15),(50,1500))
         imitator_prog_code, imitator_va1, imitator_var2 = pg.generate_program_3_variation((1, 15),(2000, 8000))
