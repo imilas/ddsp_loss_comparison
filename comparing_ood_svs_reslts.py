@@ -74,7 +74,7 @@ def _(already_read_set, d, os, pickle):
 @app.cell
 def _():
     lfn_names = ['DTW_Onset','L1_Spec' ,'SIMSE_Spec', 'JTFS']
-    ood_scenario = 0
+    ood_scenario = 3
     performance_measure = "P_Loss"
 
     return lfn_names, ood_scenario, performance_measure

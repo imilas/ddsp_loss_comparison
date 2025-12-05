@@ -17,9 +17,8 @@ DATA_FOLDER = args.data_folder
 
 # Paths
 SAVE_FILE = DATA_FOLDER+"/"+"similarity_ratings.json"
-print(SAVE_FILE)
 SAMPLE_RATE = 44100  # Adjust based on your data
-
+print("loading",SAVE_FILE)
 # Load or initialize ratings in session state
 if "ratings" not in st.session_state:
     if os.path.exists(SAVE_FILE):
@@ -85,7 +84,7 @@ for pkl_file in pkl_files:
     target_wav = array_to_wav(target_sound, SAMPLE_RATE)
     output_wav = array_to_wav(output_sound, SAMPLE_RATE)
 
-    st.subheader(f"Survey for {pkl_file}")
+    # st.subheader(f"Survey for {pkl_file}")
     
     # Play target sound
     st.write("🔊 Target Sound:")

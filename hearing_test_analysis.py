@@ -1,11 +1,11 @@
 import marimo
 
-__generated_with = "0.5.2"
+__generated_with = "0.13.6"
 app = marimo.App(width="full")
 
 
 @app.cell
-def __():
+def _():
     import json
     import pandas as pd
     import numpy as np
@@ -18,7 +18,8 @@ def __():
     import marimo as mo
     import scipy as scipy
     # List of similarity rating JSON files
-    JSON_FILES = ["survey_results/similarity_ratings_a1.json", "survey_results/similarity_ratings_a2.json"]
+    # JSON_FILES = ["survey_results/similarity_ratings_a1.json", "survey_results/similarity_ratings_a2.json"]
+    JSON_FILES = ["hearing_test/out_of_domain/similarity_ratings.json"]
 
     def load_ratings_from_files(json_files):
         """Load similarity ratings from multiple JSON files and combine them into a DataFrame."""
@@ -46,64 +47,49 @@ def __():
 
     # Print the resulting DataFrame
     print(df)
-    return (
-        JSON_FILES,
-        combinations,
-        df,
-        json,
-        load_ratings_from_files,
-        mannwhitneyu,
-        mo,
-        np,
-        os,
-        pd,
-        plt,
-        scipy,
-        sns,
-        sp,
-    )
+    return df, mo, np, pd, plt, sns
 
 
 @app.cell
-def __(mo):
-    mo.md("# D Responsers Agree? We calculate the spearman coeff")
+def _(mo):
+    mo.md("""# D Responsers Agree? We calculate the spearman coeff""")
     return
 
 
 @app.cell
-def __(df, scipy):
-    def match_and_spearman(df,group_name="all"):
-        matched_responses = [df[df.Responder == x].sort_values("sound_file")["Score"].values for x in df.Responder.unique()]
-        print("spearman for %s"%group_name, scipy.stats.spearmanr(matched_responses[1],matched_responses[0]))
-    match_and_spearman(df)
-    # per program spearman r
-    df.groupby(["Program"]).apply(lambda x: match_and_spearman(x,x.name))
-    return match_and_spearman,
-
-
-@app.cell
-def __(mo):
-    mo.md("# Kruskal wallis")
+def _():
+    # def match_and_spearman(df,group_name="all"):
+    #     matched_responses = [df[df.Responder == x].sort_values("sound_file")["Score"].values for x in df.Responder.unique()]
+    #     print("spearman for %s"%group_name, scipy.stats.spearmanr(matched_responses[1],matched_responses[0]))
+    # match_and_spearman(df)
+    # # per program spearman r
+    # df.groupby(["Program"]).apply(lambda x: match_and_spearman(x,x.name))
     return
 
 
 @app.cell
-def __(df):
+def _(mo):
+    mo.md("""# Kruskal wallis""")
+    return
+
+
+@app.cell
+def _(df):
     df
     return
 
 
 @app.cell
-def __(df):
+def _(df):
     from scipy.stats import kruskal
     def kruskal_by_loss_group(df, value_column):
         """
         Perform Kruskal-Wallis test on `value_column` for each group in the 'loss' column.
-        
+
         Parameters:
             df (pd.DataFrame): The input DataFrame with at least 'loss' and `value_column`.
             value_column (str): The name of the column on which to apply the test.
-            
+
         Returns:
             H-statistic, p-value
         """
@@ -111,16 +97,16 @@ def __(df):
             group[value_column].values
             for _, group in df.groupby("Function")
         ]
-        
+
         stat, p_value = kruskal(*grouped_values)
         return stat, p_value
     for pid in df.Program.unique():
         print("pid %d"%pid,kruskal_by_loss_group(df[df.Program==pid],"Score"))
-    return kruskal, kruskal_by_loss_group, pid
+    return
 
 
 @app.cell
-def __():
+def _():
     # program_num = 1
     # data = df
     # data = data[data["Program"] == program_num]
@@ -146,7 +132,7 @@ def __():
 
 
 @app.cell
-def __(df, np, pd):
+def _(df, np, pd):
     # Bootstrapping function to compute means and confidence intervals
     def bootstrap_means(scores, n_iterations=1000):
         boot_means = [np.mean(np.random.choice(scores, size=len(scores), replace=True)) for _ in range(n_iterations)]
@@ -155,7 +141,7 @@ def __(df, np, pd):
     # Perform bootstrapping for each category
     bootstrapped_data = []
     percentiles = {}
-    program_num = 2
+    program_num = 0
     for category in df['Function'].unique():
         category_scores = df[ (df["Program"]==program_num) &  (df['Function'] == category) ]['Score'].values
         boot_means = bootstrap_means(category_scores)
@@ -165,25 +151,11 @@ def __(df, np, pd):
 
 
     boot_df
-    return (
-        boot_df,
-        boot_means,
-        bootstrap_means,
-        bootstrapped_data,
-        category,
-        category_scores,
-        percentiles,
-        program_num,
-    )
+    return boot_df, program_num
 
 
 @app.cell
-def __():
-    return
-
-
-@app.cell
-def __(boot_df, np, pd, plt, sns):
+def _(boot_df, np, pd, plt, sns):
     from rpy2.robjects.packages import importr
     from rpy2.robjects import pandas2ri
 
@@ -227,27 +199,17 @@ def __(boot_df, np, pd, plt, sns):
     plt.tight_layout()
 
     plt.show()
-    return (
-        fp,
-        importr,
-        model_performance_df,
-        pandas2ri,
-        plot_data,
-        r_data,
-        sk,
-        sk_ranks,
-        sk_results,
-    )
+    return (plot_data,)
 
 
 @app.cell
-def __(plot_data):
+def _(plot_data):
     plot_data
     return
 
 
 @app.cell
-def __(plot_data, program_num):
+def _(plot_data, program_num):
     import plotly.graph_objects as go
 
     # Sort models alphabetically
@@ -293,7 +255,7 @@ def __(plot_data, program_num):
                 size=16,
                 color="black"
             )
-            
+
         ),
             yaxis=dict(
             showticklabels=False  # hides the y-axis tick labels (model names)
@@ -301,7 +263,7 @@ def __(plot_data, program_num):
         showlegend=False,
         yaxis_title=None,
         title=None,
-        
+
         margin=dict(l=0, r=0, t=0, b=0), 
         width=250,
         height=175
@@ -310,11 +272,11 @@ def __(plot_data, program_num):
     # Save the figure as a PDF
     fig.write_image("./plots/npsk_likert_%d.png" % (program_num), engine="kaleido",scale=5)
     fig.show()
-    return color, fig, go, model, model_order, rank, rank_palette, sub_df
+    return
 
 
 @app.cell
-def __():
+def _():
     # from PIL import Image
     # # import matplotlib.pyplot as plt
 
