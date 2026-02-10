@@ -134,6 +134,8 @@ def _():
 @app.cell
 def _(df, np, pd):
     # Bootstrapping function to compute means and confidence intervals
+
+
     def bootstrap_means(scores, n_iterations=1000):
         boot_means = [np.mean(np.random.choice(scores, size=len(scores), replace=True)) for _ in range(n_iterations)]
         return boot_means
@@ -141,7 +143,15 @@ def _(df, np, pd):
     # Perform bootstrapping for each category
     bootstrapped_data = []
     percentiles = {}
-    program_num = 0
+    # 0: am_non-overlapping freqs
+    # 1: am_sine_target_saw_imitate
+    # 2: am_saw_imitate_sine_target
+    # 3: bp_noise_target_saw_imitate
+    # 4: chirp_delayed_pitchbend
+    # 5: chirp pulsating
+    # 6: chirp normal
+
+    program_num = 3
     for category in df['Function'].unique():
         category_scores = df[ (df["Program"]==program_num) &  (df['Function'] == category) ]['Score'].values
         boot_means = bootstrap_means(category_scores)
@@ -211,7 +221,8 @@ def _(plot_data):
 @app.cell
 def _(plot_data, program_num):
     import plotly.graph_objects as go
-
+    import plotly.io as pio
+    pio.templates.default = "plotly_white"
     # Sort models alphabetically
     model_order = sorted(plot_data["Model"].unique())
 
@@ -270,7 +281,7 @@ def _(plot_data, program_num):
     )
 
     # Save the figure as a PDF
-    fig.write_image("./plots/npsk_likert_%d.png" % (program_num), engine="kaleido",scale=5)
+    fig.write_image("./plots/npsk_ood_likert_%d.png" % (program_num), engine="kaleido",scale=5)
     fig.show()
     return
 
