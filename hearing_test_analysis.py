@@ -19,7 +19,7 @@ def _():
     import scipy as scipy
     # List of similarity rating JSON files
     # JSON_FILES = ["survey_results/similarity_ratings_a1.json", "survey_results/similarity_ratings_a2.json"]
-    JSON_FILES = ["hearing_test/out_of_domain/similarity_ratings.json"]
+    JSON_FILES = ["survey_results/out_of_domain/amir_similarity_ratings.json"]
 
     def load_ratings_from_files(json_files):
         """Load similarity ratings from multiple JSON files and combine them into a DataFrame."""
