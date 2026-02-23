@@ -18,8 +18,8 @@ def _():
     import marimo as mo
     import scipy as scipy
     # List of similarity rating JSON files
-    # JSON_FILES = ["survey_results/similarity_ratings_a1.json", "survey_results/similarity_ratings_a2.json"]
-    JSON_FILES = ["survey_results/out_of_domain/amir_similarity_ratings.json"]
+    # JSON_FILES = ["survey_results/in_domain/similarity_ratings_a1.json", "survey_results/in_domain/similarity_ratings_a2.json"]
+    JSON_FILES = ["survey_results/out_of_domain/amir_similarity_ratings.json","survey_results/out_of_domain/abram_similarity_ratings.json"]
 
     def load_ratings_from_files(json_files):
         """Load similarity ratings from multiple JSON files and combine them into a DataFrame."""
@@ -47,7 +47,7 @@ def _():
 
     # Print the resulting DataFrame
     print(df)
-    return df, mo, np, pd, plt, sns
+    return df, mo, np, pd, plt, scipy, sns
 
 
 @app.cell
@@ -57,13 +57,15 @@ def _(mo):
 
 
 @app.cell
-def _():
-    # def match_and_spearman(df,group_name="all"):
-    #     matched_responses = [df[df.Responder == x].sort_values("sound_file")["Score"].values for x in df.Responder.unique()]
-    #     print("spearman for %s"%group_name, scipy.stats.spearmanr(matched_responses[1],matched_responses[0]))
-    # match_and_spearman(df)
-    # # per program spearman r
-    # df.groupby(["Program"]).apply(lambda x: match_and_spearman(x,x.name))
+def _(df, scipy):
+    # could do spearman or kendalltau
+    def match_and_spearman(df,group_name="all"):
+        matched_responses = [df[df.Responder == x].sort_values("sound_file")["Score"].values for x in df.Responder.unique()]
+        print("spearman for %s"%group_name, scipy.stats.spearmanr(matched_responses[1],matched_responses[0]))
+    
+    match_and_spearman(df)
+    # per program spearman r
+    df.groupby(["Program"]).apply(lambda x: match_and_spearman(x,x.name))
     return
 
 
@@ -107,7 +109,7 @@ def _(df):
 
 @app.cell
 def _():
-    # program_num = 1
+    # # program_num = 1
     # data = df
     # data = data[data["Program"] == program_num]
     # data["cv"] = data.groupby("Function").cumcount()
@@ -151,7 +153,7 @@ def _(df, np, pd):
     # 5: chirp pulsating
     # 6: chirp normal
 
-    program_num = 3
+    program_num = 6
     for category in df['Function'].unique():
         category_scores = df[ (df["Program"]==program_num) &  (df['Function'] == category) ]['Score'].values
         boot_means = bootstrap_means(category_scores)
