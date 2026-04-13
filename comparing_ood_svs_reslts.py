@@ -74,7 +74,7 @@ def _(already_read_set, d, os, pickle):
 @app.cell
 def _():
     lfn_names = ['DTW_Onset','L1_Spec' ,'SIMSE_Spec', 'JTFS']
-    ood_scenario = 3
+    ood_scenario = 1
     performance_measure = "P_Loss"
 
     return lfn_names, ood_scenario, performance_measure
@@ -116,10 +116,11 @@ def _(np, ood_scenario):
         p2 = np.array(e["final_params"]["params"]["_dawdreamer/carrier"])
         return np.sqrt((p1-p2)**2)
 
+    # maybe should use full error for 0,1,2 as well?
     def set_p_loss(odd_scenario):
         if odd_scenario in {0,1,2}:
             return get_p_error_amp
-        elif odd_scenario in {2,3,4,5,6}:
+        elif odd_scenario in {3,4,5,6}:
             return get_p_error
 
     p_loss = set_p_loss(ood_scenario)
